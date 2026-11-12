@@ -60,14 +60,28 @@ struct TermEntry {
 /// non-Linux host answers with whatever `/proc` and `df` it has.
 #[derive(Clone, Default, Serialize)]
 pub struct ServerStats {
+    /// Overall CPU busy % over the last second, counted the way htop does (iowait is idle).
     pub cpu: Option<f32>,
+    /// Same per core, in /proc/stat order (empty when the server could not sample twice).
+    pub cpus: Vec<f32>,
     pub load1: Option<f32>,
+    pub load5: Option<f32>,
+    pub load15: Option<f32>,
+    pub procs_running: Option<u32>,
+    pub procs_total: Option<u32>,
     pub cores: Option<u32>,
     pub mem_total_kb: Option<u64>,
+    /// "Used" like htop / free: total − free − buffers − cache − reclaimable + shmem.
     pub mem_used_kb: Option<u64>,
+    /// Buffers + page cache + reclaimable slab (minus shmem): memory the kernel can hand back.
+    pub mem_cache_kb: Option<u64>,
+    pub mem_avail_kb: Option<u64>,
+    pub swap_total_kb: Option<u64>,
+    pub swap_used_kb: Option<u64>,
     /// The fullest local filesystem (what breaks first); every mount is in `disks`.
     pub disk_total_kb: Option<u64>,
     pub disk_used_kb: Option<u64>,
+    pub disk_avail_kb: Option<u64>,
     pub disk_mount: Option<String>,
     pub disks: Vec<DiskStat>,
     pub uptime_secs: Option<u64>,
@@ -78,35 +92,71 @@ pub struct DiskStat {
     pub mount: String,
     pub total_kb: u64,
     pub used_kb: u64,
+    /// Blocks a normal user can still write (`df` computes Use% from used / (used + avail),
+    /// which is why it differs from used / total on filesystems with reserved blocks).
+    pub avail_kb: u64,
 }
 
-/// One round trip, ~300 bytes back. No `top`, no `ps`: reading /proc costs the server nothing.
-const STATS_CMD: &str = "head -1 /proc/stat 2>/dev/null; grep -E '^(MemTotal|MemAvailable):' /proc/meminfo 2>/dev/null; echo \"load $(cat /proc/loadavg 2>/dev/null)\"; echo \"cores $(nproc 2>/dev/null)\"; echo \"up $(cut -d' ' -f1 /proc/uptime 2>/dev/null)\"; df -Pk -l 2>/dev/null | sed -n '2,$s/^/disk /p'";
+/// One round trip, under 1 KB back. No `top`, no `ps`: reading /proc costs the server nothing.
+/// /proc/stat is read twice, one second apart, so the CPU figure is a fresh one-second
+/// average like htop's instead of "since the last poll" (which could be minutes when the tab
+/// was hidden). `cpusep` marks the boundary between the two samples.
+const STATS_CMD: &str = "grep '^cpu' /proc/stat 2>/dev/null; echo cpusep; sleep 1; grep '^cpu' /proc/stat 2>/dev/null; grep -E '^(MemTotal|MemFree|MemAvailable|Buffers|Cached|SReclaimable|Shmem|SwapTotal|SwapFree):' /proc/meminfo 2>/dev/null; echo \"load $(cat /proc/loadavg 2>/dev/null)\"; echo \"cores $(nproc 2>/dev/null)\"; echo \"up $(cut -d' ' -f1 /proc/uptime 2>/dev/null)\"; df -Pk -l 2>/dev/null | sed -n '2,$s/^/disk /p'";
+
+/// (busy, total) jiffies of one `/proc/stat` cpu line, counted like htop: idle + iowait are
+/// idle, guest time is already inside user/nice so only the first eight fields are summed.
+fn cpu_jiffies(fields: &[u64]) -> Option<(u64, u64)> {
+    if fields.len() < 4 {
+        return None;
+    }
+    let idle = fields[3] + fields.get(4).copied().unwrap_or(0);
+    let total: u64 = fields.iter().take(8).sum();
+    Some((total.saturating_sub(idle), total))
+}
+
+fn cpu_pct(prev: (u64, u64), now: (u64, u64)) -> Option<f32> {
+    if now.1 <= prev.1 {
+        return None;
+    }
+    let busy = now.0.saturating_sub(prev.0) as f32;
+    Some((busy / (now.1 - prev.1) as f32 * 100.0).clamp(0.0, 100.0))
+}
 
 fn parse_stats(out: &str, prev: &mut Option<(u64, u64)>) -> ServerStats {
     let mut s = ServerStats::default();
     let num = |w: Option<&str>| w.and_then(|x| x.parse::<u64>().ok());
-    let mut avail = None;
+    let mut mem = std::collections::HashMap::<&str, u64>::new();
+    // cpu lines of the first and second sample: (name, (busy, total))
+    let mut first: Vec<(String, (u64, u64))> = Vec::new();
+    let mut second: Vec<(String, (u64, u64))> = Vec::new();
+    let mut after_sep = false;
     for line in out.lines() {
         let mut w = line.split_whitespace();
         match w.next() {
-            Some("cpu") => {
+            Some("cpusep") => after_sep = true,
+            Some(name) if name.starts_with("cpu") => {
                 let v: Vec<u64> = w.filter_map(|x| x.parse().ok()).collect();
-                if v.len() >= 4 {
-                    let idle = v[3] + v.get(4).copied().unwrap_or(0);
-                    let total: u64 = v.iter().sum();
-                    if let Some((pb, pt)) = *prev
-                        && total > pt
-                    {
-                        let busy = (total - idle).saturating_sub(pb);
-                        s.cpu = Some((busy as f32 / (total - pt) as f32 * 100.0).clamp(0.0, 100.0));
-                    }
-                    *prev = Some((total - idle, total));
+                if let Some(j) = cpu_jiffies(&v) {
+                    if after_sep { &mut second } else { &mut first }.push((name.to_string(), j));
                 }
             }
-            Some("MemTotal:") => s.mem_total_kb = num(w.next()),
-            Some("MemAvailable:") => avail = num(w.next()),
-            Some("load") => s.load1 = w.next().and_then(|x| x.parse().ok()),
+            Some(
+                k @ ("MemTotal:" | "MemFree:" | "MemAvailable:" | "Buffers:" | "Cached:"
+                | "SReclaimable:" | "Shmem:" | "SwapTotal:" | "SwapFree:"),
+            ) => {
+                if let Some(v) = num(w.next()) {
+                    mem.insert(k.trim_end_matches(':'), v);
+                }
+            }
+            Some("load") => {
+                s.load1 = w.next().and_then(|x| x.parse().ok());
+                s.load5 = w.next().and_then(|x| x.parse().ok());
+                s.load15 = w.next().and_then(|x| x.parse().ok());
+                if let Some((r, t)) = w.next().and_then(|x| x.split_once('/')) {
+                    s.procs_running = r.parse().ok();
+                    s.procs_total = t.parse().ok();
+                }
+            }
             Some("cores") => s.cores = w.next().and_then(|x| x.parse().ok()),
             Some("up") => {
                 s.uptime_secs = w
@@ -119,12 +169,17 @@ fn parse_stats(out: &str, prev: &mut Option<(u64, u64)>) -> ServerStats {
                 // (no tmpfs, overlay, snap squashfs); the mount may contain spaces.
                 let v: Vec<&str> = w.collect();
                 if v.len() >= 6 && v[0].starts_with("/dev/") && !v[0].contains("/loop") {
-                    if let (Ok(total), Ok(used)) = (v[1].parse::<u64>(), v[2].parse::<u64>()) {
+                    if let (Ok(total), Ok(used), Ok(avail)) = (
+                        v[1].parse::<u64>(),
+                        v[2].parse::<u64>(),
+                        v[3].parse::<u64>(),
+                    ) {
                         if total > 0 {
                             s.disks.push(DiskStat {
                                 mount: v[5..].join(" "),
                                 total_kb: total,
                                 used_kb: used,
+                                avail_kb: avail,
                             });
                         }
                     }
@@ -133,19 +188,61 @@ fn parse_stats(out: &str, prev: &mut Option<(u64, u64)>) -> ServerStats {
             _ => {}
         }
     }
-    if let (Some(t), Some(a)) = (s.mem_total_kb, avail) {
-        s.mem_used_kb = Some(t.saturating_sub(a));
+    // if a single sample came back (no `sleep`, odd shell) fall back to the previous poll
+    let (before, now) = if after_sep {
+        (first, second)
+    } else {
+        (Vec::new(), first)
+    };
+    let agg = |v: &[(String, (u64, u64))]| v.iter().find(|(n, _)| n == "cpu").map(|(_, j)| *j);
+    if let Some(cur) = agg(&now) {
+        s.cpu = match agg(&before) {
+            Some(prev_cur) => cpu_pct(prev_cur, cur),
+            None => prev.and_then(|p| cpu_pct(p, cur)),
+        };
+        *prev = Some(cur);
+    }
+    if !before.is_empty() {
+        s.cpus = now
+            .iter()
+            .filter(|(n, _)| n.len() > 3)
+            .filter_map(|(n, cur)| {
+                before
+                    .iter()
+                    .find(|(m, _)| m == n)
+                    .and_then(|(_, p)| cpu_pct(*p, *cur))
+            })
+            .collect();
+    }
+    let g = |k: &str| mem.get(k).copied();
+    s.mem_total_kb = g("MemTotal");
+    s.mem_avail_kb = g("MemAvailable");
+    if let Some(t) = s.mem_total_kb {
+        match (g("MemFree"), g("Buffers"), g("Cached")) {
+            (Some(free), Some(buf), Some(cached)) => {
+                let recl = g("SReclaimable").unwrap_or(0);
+                let shm = g("Shmem").unwrap_or(0);
+                let cache = (buf + cached + recl).saturating_sub(shm);
+                s.mem_cache_kb = Some(cache);
+                s.mem_used_kb = Some(t.saturating_sub(free).saturating_sub(cache));
+            }
+            _ => s.mem_used_kb = s.mem_avail_kb.map(|a| t.saturating_sub(a)),
+        }
+    }
+    if let (Some(st), Some(sf)) = (g("SwapTotal"), g("SwapFree"))
+        && st > 0
+    {
+        s.swap_total_kb = Some(st);
+        s.swap_used_kb = Some(st.saturating_sub(sf));
     }
     // one entry per device: bind mounts and btrfs subvolumes repeat the same disk
     let mut seen = std::collections::HashSet::new();
     s.disks.retain(|d| seen.insert((d.total_kb, d.used_kb)));
-    if let Some(fullest) = s
-        .disks
-        .iter()
-        .max_by(|a, b| (a.used_kb * 1000 / a.total_kb).cmp(&(b.used_kb * 1000 / b.total_kb)))
-    {
+    let df_pct = |d: &DiskStat| d.used_kb * 1000 / (d.used_kb + d.avail_kb).max(1);
+    if let Some(fullest) = s.disks.iter().max_by_key(|d| df_pct(d)) {
         s.disk_total_kb = Some(fullest.total_kb);
         s.disk_used_kb = Some(fullest.used_kb);
+        s.disk_avail_kb = Some(fullest.avail_kb);
         s.disk_mount = Some(fullest.mount.clone());
     }
     s
@@ -2201,33 +2298,55 @@ pub fn shutdown(app: &AppHandle) {
 mod stats_tests {
     use super::parse_stats;
 
-    const SAMPLE1: &str = "cpu  1000 0 500 8000 100 0 0 0 0 0\nMemTotal:        3980000 kB\nMemAvailable:    2600000 kB\nload 0.52 0.40 0.35 1/230 4567\ncores 4\nup 123456.78\ndisk /dev/vda1 41943040 33554432 8388608 81% /\ndisk tmpfs 1000 10 990 1% /run\ndisk /dev/vdb1 104857600 10485760 94371840 10% /data\ndisk /dev/vda1 41943040 33554432 8388608 81% /var/lib/docker/overlay2/x/merged\n";
-    const SAMPLE2: &str = "cpu  1300 0 600 8600 100 0 0 0 0 0\n";
+    const SAMPLE1: &str = "cpu  1000 0 500 8000 100 0 0 0 0 0\ncpu0 500 0 250 4000 50 0 0 0 0 0\ncpu1 500 0 250 4000 50 0 0 0 0 0\ncpusep\ncpu  1300 0 600 8600 100 0 0 0 0 0\ncpu0 800 0 350 4100 50 0 0 0 0 0\ncpu1 500 0 250 4500 50 0 0 0 0 0\nMemTotal:        3980000 kB\nMemFree:         1000000 kB\nMemAvailable:    2600000 kB\nBuffers:          200000 kB\nCached:          1500000 kB\nSReclaimable:     100000 kB\nShmem:             50000 kB\nSwapTotal:       1000000 kB\nSwapFree:         750000 kB\nload 0.52 0.40 0.35 1/230 4567\ncores 4\nup 123456.78\ndisk /dev/vda1 41943040 33554432 8388608 81% /\ndisk tmpfs 1000 10 990 1% /run\ndisk /dev/vdb1 104857600 10485760 94371840 10% /data\ndisk /dev/vda1 41943040 33554432 8388608 81% /var/lib/docker/overlay2/x/merged\n";
+    // a host whose shell could not take the second sample: one block, no `cpusep`
+    const SAMPLE2: &str = "cpu  2000 0 800 9700 100 0 0 0 0 0\n";
 
     #[test]
     fn parses_linux_proc_and_df() {
         let mut prev = None;
         let s = parse_stats(SAMPLE1, &mut prev);
-        assert_eq!(s.cpu, None, "first sample has no delta");
+        // busy went 1500 -> 1900 (+400) while total went 9600 -> 10600 (+1000): 40 %
+        assert!(
+            (s.cpu.unwrap() - 40.0).abs() < 0.01,
+            "one-second delta inside the command"
+        );
+        assert_eq!(s.cpus.len(), 2);
+        assert!((s.cpus[0] - 80.0).abs() < 0.01 && s.cpus[1].abs() < 0.01);
         assert_eq!(s.mem_total_kb, Some(3_980_000));
-        assert_eq!(s.mem_used_kb, Some(1_380_000));
-        assert_eq!(s.load1, Some(0.52));
+        // like htop: total − free − (buffers + cached + reclaimable − shmem)
+        assert_eq!(s.mem_cache_kb, Some(1_750_000));
+        assert_eq!(s.mem_used_kb, Some(1_230_000));
+        assert_eq!(s.mem_avail_kb, Some(2_600_000));
+        assert_eq!(s.swap_total_kb, Some(1_000_000));
+        assert_eq!(s.swap_used_kb, Some(250_000));
+        assert_eq!(
+            (s.load1, s.load5, s.load15),
+            (Some(0.52), Some(0.40), Some(0.35))
+        );
+        assert_eq!((s.procs_running, s.procs_total), (Some(1), Some(230)));
         assert_eq!(s.cores, Some(4));
         assert_eq!(s.uptime_secs, Some(123_456));
         assert_eq!(s.disk_total_kb, Some(41_943_040));
         assert_eq!(s.disk_used_kb, Some(33_554_432));
+        assert_eq!(s.disk_avail_kb, Some(8_388_608));
         assert_eq!(s.disk_mount.as_deref(), Some("/"));
         assert_eq!(s.disks.len(), 2, "tmpfs skipped, duplicate device folded");
         assert_eq!(s.disks[1].mount, "/data");
         let s2 = parse_stats(SAMPLE2, &mut prev);
-        // busy went 1500 -> 1900 (+400) while total went 9600 -> 10600 (+1000): 40 %
-        assert!((s2.cpu.unwrap() - 40.0).abs() < 0.01);
+        // against the previous poll: busy 1900 -> 2800 (+900), total 10600 -> 12600 (+2000): 45 %
+        assert!((s2.cpu.unwrap() - 45.0).abs() < 0.01);
+        assert!(
+            s2.cpus.is_empty(),
+            "no per-core figures without a pair of samples"
+        );
     }
 
     #[test]
     fn tolerates_a_host_without_proc() {
         let mut prev = None;
-        let s = parse_stats("load \ncores \nup \ndisk \n", &mut prev);
+        let s = parse_stats("cpusep\nload \ncores \nup \ndisk \n", &mut prev);
         assert!(s.cpu.is_none() && s.mem_total_kb.is_none() && s.disk_total_kb.is_none());
+        assert!(s.cpus.is_empty() && s.swap_total_kb.is_none() && s.load1.is_none());
     }
 }

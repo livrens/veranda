@@ -289,28 +289,30 @@
      command over the existing connection every 10 s, only for the terminal that is visible;
      nothing runs while the tab is hidden, the window is in the background or the user hid it. */
   const statsOn = () => { try { return localStorage.getItem("veranda.termStats") !== "0"; } catch (e) { return true; } };
-  const fmtG = (kb) => kb >= 1024 * 1024 ? `${(kb / 1024 / 1024).toFixed(kb >= 10 * 1024 * 1024 ? 0 : 1)} GB` : `${Math.round(kb / 1024)} MB`;
+  // sizes the way htop prints them (971M / 1.92G), spelled out a little
+  const fmtG = (kb) => kb >= 1024 * 1024 ? `${(kb / 1024 / 1024).toFixed(kb >= 100 * 1024 * 1024 ? 0 : kb >= 10 * 1024 * 1024 ? 1 : 2)} GB` : `${Math.round(kb / 1024)} MB`;
   const fmtUp = (s) => s >= 86400 ? `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h` : s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.floor(s / 60)}m`;
-  function meter(label, pct, text, title) {
-    const p = pct == null ? 0 : Math.max(0, Math.min(100, pct));
-    const lvl = pct == null ? "" : p >= 90 ? "bad" : p >= 70 ? "warn" : "";
-    return `<span class="tsm ${lvl}" title="${esc(title || "")}"><b>${label}</b><i><s style="width:${p}%"></s></i><span>${esc(text)}</span></span>`;
+  const lvlOf = (pct) => pct == null ? "" : pct >= 90 ? "bad" : pct >= 70 ? "warn" : "";
+  const clamp = (pct) => pct == null ? 0 : Math.max(0, Math.min(100, pct));
+  /* One tile: label, big figure, dim detail, a thin bar underneath (optionally two segments:
+     solid = used, faded = cache) and, for CPU, one hairline per core. Plain spans; the only
+     animation is the bar width, so repainting every 5 s costs nothing noticeable. */
+  function tile(cls, label, pct, value, detail, title, segs, cores) {
+    const bar = pct == null && !segs ? "" : `<i class="tsb">${segs ? segs.map((s) => `<s class="${s.cls || ""}" style="width:${clamp(s.pct)}%"></s>`).join("") : `<s style="width:${clamp(pct)}%"></s>`}</i>`;
+    const mini = cores?.length ? `<span class="tsk">${cores.map((c) => `<s class="${lvlOf(c)}" style="--h:${clamp(c)}%"></s>`).join("")}</span>` : "";
+    return `<span class="tsc ${cls} ${lvlOf(pct)}" title="${esc(title || "")}"><span class="tsh"><b>${label}</b><span class="tsv">${esc(value)}</span>${detail ? `<span class="tsd">${esc(detail)}</span>` : ""}${mini}</span>${bar}</span>`;
   }
-  // Tooltip: every local filesystem plus the total the way cloud consoles count it (all disks
-  // together, used / size), so the number here and the number there can be compared.
-  // all local disks together (used / size), the figure cloud consoles usually show
-  function allDisks(st) {
-    if (!st.disks || st.disks.length < 2) return "";
-    const used = st.disks.reduce((a, d) => a + d.used_kb, 0), total = st.disks.reduce((a, d) => a + d.total_kb, 0);
-    return total ? ` · ${Math.round((used / total) * 100)}% ${t("rm.statsAll")}` : "";
-  }
+  const dfPct = (d) => d.used_kb + d.avail_kb > 0 ? (d.used_kb / (d.used_kb + d.avail_kb)) * 100 : (d.used_kb / d.total_kb) * 100;
+  // Tooltip: every local filesystem with the percentage `df` prints (used / (used + avail))
+  // plus the total the way cloud consoles count it (all disks together, used / size).
   function diskTitle(st) {
     if (!st.disks?.length) return "";
-    const lines = st.disks.map((d) => `${d.mount}: ${fmtG(d.used_kb)} ${t("rm.statsOf")} ${fmtG(d.total_kb)} (${Math.round((d.used_kb / d.total_kb) * 100)}%)`);
+    const lines = st.disks.map((d) => `${d.mount}: ${fmtG(d.used_kb)} ${t("rm.statsOf")} ${fmtG(d.total_kb)} (${Math.round(dfPct(d))}%) · ${fmtG(d.avail_kb)} ${t("rm.statsFree")}`);
     if (st.disks.length > 1) {
       const used = st.disks.reduce((a, d) => a + d.used_kb, 0), total = st.disks.reduce((a, d) => a + d.total_kb, 0);
       lines.push(`${t("rm.statsAllDisks")}: ${fmtG(used)} ${t("rm.statsOf")} ${fmtG(total)} (${Math.round((used / total) * 100)}%)`);
     }
+    lines.push(t("rm.statsDiskNote"));
     return lines.join("\n");
   }
   function renderStats(x) {
@@ -323,13 +325,27 @@
     // (the prompt) end up below the edge
     if (wasHidden === show) requestAnimationFrame(() => { try { x.fit.fit(); x.term.scrollToBottom(); } catch (e) {} });
     if (!show) return;
-    const cpuT = st.load1 != null ? `${t("rm.statsLoad")} ${st.load1.toFixed(2)}${st.cores ? ` · ${st.cores} ${t("rm.statsCores")}` : ""}` : "";
+    const of = t("rm.statsOf");
+    const cores = st.cores || st.cpus?.length || 0;
+    const coreT = st.cpus?.length ? `\n${t("rm.statsPerCore")}: ${st.cpus.map((c) => `${c.toFixed(0)}%`).join("  ")}` : "";
+    const cpuT = `${t("rm.statsCpuNote")}${cores ? ` · ${cores} ${t("rm.statsCores")}` : ""}${coreT}`;
     const memPct = st.mem_total_kb ? (st.mem_used_kb / st.mem_total_kb) * 100 : null;
-    const diskPct = st.disk_total_kb ? (st.disk_used_kb / st.disk_total_kb) * 100 : null;
-    box.innerHTML = meter("CPU", st.cpu, st.cpu == null ? "…" : `${st.cpu.toFixed(0)}%`, cpuT)
-      + meter("RAM", memPct, st.mem_total_kb ? `${memPct.toFixed(0)}% · ${fmtG(st.mem_used_kb)} / ${fmtG(st.mem_total_kb)}` : "—", st.mem_total_kb ? `${fmtG(st.mem_used_kb)} ${t("rm.statsOf")} ${fmtG(st.mem_total_kb)} (${t("rm.statsMemNote")})` : "")
-      + meter("Disk", diskPct, st.disk_total_kb ? `${diskPct.toFixed(0)}% ${st.disk_mount || "/"}${allDisks(st)}` : "—", diskTitle(st))
-      + (st.uptime_secs ? `<span class="tsu">${t("rm.statsUp")} ${fmtUp(st.uptime_secs)}</span>` : "");
+    const cachePct = st.mem_total_kb && st.mem_cache_kb != null ? (st.mem_cache_kb / st.mem_total_kb) * 100 : 0;
+    const memT = st.mem_total_kb ? [`${t("rm.statsUsed")}: ${fmtG(st.mem_used_kb)} ${of} ${fmtG(st.mem_total_kb)} (${memPct.toFixed(0)}%)`,
+      st.mem_cache_kb != null ? `${t("rm.statsCache")}: ${fmtG(st.mem_cache_kb)}` : "",
+      st.mem_avail_kb != null ? `${t("rm.statsAvail")}: ${fmtG(st.mem_avail_kb)}` : "", t("rm.statsMemNote")].filter(Boolean).join("\n") : "";
+    const swapPct = st.swap_total_kb ? (st.swap_used_kb / st.swap_total_kb) * 100 : null;
+    const diskPct = st.disk_total_kb ? dfPct({ used_kb: st.disk_used_kb, avail_kb: st.disk_avail_kb || 0, total_kb: st.disk_total_kb }) : null;
+    const loadPct = st.load1 != null && cores ? (st.load1 / cores) * 100 : null;
+    const loadT = st.load1 != null ? `${t("rm.statsLoadAvg")}${cores ? ` · ${cores} ${t("rm.statsCores")}` : ""}` : "";
+    box.innerHTML = tile("cpu", "CPU", st.cpu, st.cpu == null ? "…" : `${st.cpu.toFixed(0)}%`, "", cpuT, null, st.cpus?.length <= 16 ? st.cpus : null)
+      + tile("mem", "RAM", memPct, st.mem_total_kb ? `${fmtG(st.mem_used_kb)}` : "—", st.mem_total_kb ? `/ ${fmtG(st.mem_total_kb)}` : "", memT,
+        st.mem_total_kb ? [{ pct: memPct }, { pct: cachePct, cls: "cache" }] : null)
+      + (swapPct != null ? tile("swap", "Swap", swapPct, fmtG(st.swap_used_kb), `/ ${fmtG(st.swap_total_kb)}`, `${t("rm.statsUsed")}: ${fmtG(st.swap_used_kb)} ${of} ${fmtG(st.swap_total_kb)} (${swapPct.toFixed(0)}%)`) : "")
+      + tile("disk", "Disk", diskPct, st.disk_total_kb ? `${diskPct.toFixed(0)}%` : "—", st.disk_total_kb ? `${st.disk_mount || "/"} · ${fmtG(st.disk_avail_kb || 0)} ${t("rm.statsFree")}` : "", diskTitle(st))
+      + (st.load1 != null ? tile("load", t("rm.statsLoad"), loadPct, st.load1.toFixed(2), `${(st.load5 ?? 0).toFixed(2)} · ${(st.load15 ?? 0).toFixed(2)}`, loadT) : "")
+      + (st.procs_total != null ? tile("tasks", t("rm.statsTasks"), null, String(st.procs_total), st.procs_running != null ? `${st.procs_running} ${t("rm.statsRunning")}` : "", t("rm.statsTasksNote")) : "")
+      + (st.uptime_secs ? tile("up", t("rm.statsUp"), null, fmtUp(st.uptime_secs), "", t("rm.statsUpNote")) : "");
   }
   let statsTimer = null;
   async function pollStats(force) {

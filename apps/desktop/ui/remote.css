@@ -210,15 +210,26 @@ textarea.editor { width: 100%; min-height: 320px; }
 #dlg-prompt h2 { overflow-wrap: anywhere; }
 
 /* ---------- server stats strip (SSH terminals) ---------- */
-.term-stats { display: flex; align-items: center; gap: 14px; padding: 5px 12px; border-bottom: 1px solid var(--line); background: var(--surface-2); font-size: 11.5px; color: var(--muted); cursor: pointer; overflow: hidden; white-space: nowrap; user-select: none; }
-.term-stats:hover { color: var(--text); }
-.tsm { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-.tsm b { font-weight: 700; letter-spacing: .02em; font-size: 10.5px; color: var(--faint); width: 28px; }
-.tsm i { width: 64px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--line) 70%, transparent); overflow: hidden; flex: none; }
-.tsm i s { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--ok); text-decoration: none; transition: width .5s ease; }
-.tsm.warn i s { background: var(--warn); } .tsm.bad i s { background: var(--bad); }
-.tsm > span { font-family: var(--mono); font-size: 11px; }
-.tsu { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.term-stats { display: flex; align-items: stretch; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--line); background: var(--surface-2); color: var(--muted); cursor: pointer; overflow: hidden; white-space: nowrap; user-select: none; }
+/* tile: label + figure on top, hairline bar underneath */
+.tsc { --c: var(--ok); display: inline-flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; padding: 3px 9px 4px; border-radius: 8px; background: color-mix(in srgb, var(--surface) 75%, transparent); border: 1px solid color-mix(in srgb, var(--line) 85%, transparent); transition: border-color .2s ease; }
+.tsc.warn { --c: var(--warn); } .tsc.bad { --c: var(--bad); }
+.tsc.warn, .tsc.bad { border-color: color-mix(in srgb, var(--c) 35%, var(--line)); background: color-mix(in srgb, var(--c) 7%, var(--surface)); }
+.term-stats:hover .tsc { border-color: color-mix(in srgb, var(--c) 45%, var(--line)); }
+.tsc .tsh { display: flex; align-items: baseline; gap: 6px; line-height: 1.1; }
+.tsc b { font-size: 9px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); }
+.tsc .tsv { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.tsc.warn .tsv, .tsc.bad .tsv { color: var(--c); }
+.tsc .tsd { font-family: var(--mono); font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tsc .tsb { display: flex; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--line) 85%, transparent); overflow: hidden; }
+.tsc .tsb s { display: block; height: 100%; width: 0; background: var(--c); text-decoration: none; transition: width .6s ease; flex: none; }
+.tsc .tsb s.cache { background: color-mix(in srgb, var(--c) 32%, transparent); }
+/* one hairline per core next to the CPU figure, filled from the bottom */
+.tsc .tsk { display: inline-flex; align-items: stretch; gap: 2px; height: 11px; margin-left: 3px; align-self: center; }
+.tsc .tsk s { position: relative; display: block; width: 3px; border-radius: 1px; background: color-mix(in srgb, var(--line) 90%, transparent); text-decoration: none; overflow: hidden; }
+.tsc .tsk s::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--h, 0%); background: var(--ok); transition: height .6s ease; }
+.tsc .tsk s.warn::after { background: var(--warn); } .tsc .tsk s.bad::after { background: var(--bad); }
+.tsc.up { margin-left: auto; }
 
 /* ---------- narrow terminal stage: the snippets panel floats over the terminal instead of
    squeezing it, and the bar keeps only what fits ---------- */
@@ -228,10 +239,10 @@ textarea.editor { width: 100%; min-height: 320px; }
 .term-stage.narrow .term-bar .ttarget { display: none; }
 .term-stage.narrow .term-bar .term-snip-btn span { display: none; }
 .term-stage.narrow .term-bar .term-snip-btn { width: 30px; padding: 0; justify-content: center; }
-.term-stage.narrow .term-stats { gap: 10px; }
-.term-stage.narrow .tsm i { width: 44px; }
+.term-stage.narrow .term-stats { gap: 4px; }
+.term-stage.narrow .tsc { padding: 3px 7px 4px; }
+.term-stage.narrow .tsc .tsd, .term-stage.narrow .tsc .tsk, .term-stage.narrow .tsc.tasks { display: none; }
 .term-stage.tight .term-bar { padding-left: 8px; gap: 5px; }
 .term-stage.tight .term-bar .tstate .txt { display: none; }
-.term-stage.tight .tsm > span { display: none; }
-.term-stage.tight .tsu { display: none; }
+.term-stage.tight .tsc.load, .term-stage.tight .tsc.up, .term-stage.tight .tsc.swap { display: none; }
 .term-stage.tight .term-view { padding-left: 8px; }

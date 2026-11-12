@@ -575,7 +575,7 @@ input[type=radio]:checked::after { content: ""; width: 8px; height: 8px; border-
 :root[data-skin="glass"] .svc-item:hover, :root[data-skin="glass"] .nav-item:hover { background: rgba(92, 70, 48, .07); }
 :root[data-skin="glass"] .switch { background: rgba(92, 70, 48, .22); }
 :root[data-skin="glass"] .switch:checked { background: var(--accent); }
-:root[data-skin="glass"] .progress .bar, :root[data-skin="glass"] .tsm i { background: rgba(92, 70, 48, .16); }
+:root[data-skin="glass"] .progress .bar, :root[data-skin="glass"] .tsc .tsb { background: rgba(92, 70, 48, .16); }
 :root[data-skin="glass"] .term-view { background: transparent; }
 :root[data-skin="glass"] dialog::backdrop { background: rgba(40, 28, 18, .35); }
 
@@ -595,7 +595,7 @@ input[type=radio]:checked::after { content: ""; width: 8px; height: 8px; border-
   :root[data-skin="glass"]:not([data-theme="light"]) .svc-item:hover, :root[data-skin="glass"]:not([data-theme="light"]) .nav-item:hover { background: rgba(255, 235, 210, .07); }
   :root[data-skin="glass"]:not([data-theme="light"]) .switch { background: rgba(255, 235, 210, .18); }
   :root[data-skin="glass"]:not([data-theme="light"]) .switch:checked { background: var(--accent); }
-  :root[data-skin="glass"]:not([data-theme="light"]) .progress .bar, :root[data-skin="glass"]:not([data-theme="light"]) .tsm i { background: rgba(255, 235, 210, .12); }
+  :root[data-skin="glass"]:not([data-theme="light"]) .progress .bar, :root[data-skin="glass"]:not([data-theme="light"]) .tsc .tsb { background: rgba(255, 235, 210, .12); }
   :root[data-skin="glass"]:not([data-theme="light"]) dialog::backdrop { background: rgba(0, 0, 0, .5); }
 }
 :root[data-skin="glass"][data-theme="dark"] {
@@ -611,7 +611,7 @@ input[type=radio]:checked::after { content: ""; width: 8px; height: 8px; border-
 :root[data-skin="glass"][data-theme="dark"] .svc-item:hover, :root[data-skin="glass"][data-theme="dark"] .nav-item:hover { background: rgba(255, 235, 210, .07); }
 :root[data-skin="glass"][data-theme="dark"] .switch { background: rgba(255, 235, 210, .18); }
 :root[data-skin="glass"][data-theme="dark"] .switch:checked { background: var(--accent); }
-:root[data-skin="glass"][data-theme="dark"] .progress .bar, :root[data-skin="glass"][data-theme="dark"] .tsm i { background: rgba(255, 235, 210, .12); }
+:root[data-skin="glass"][data-theme="dark"] .progress .bar, :root[data-skin="glass"][data-theme="dark"] .tsc .tsb { background: rgba(255, 235, 210, .12); }
 :root[data-skin="glass"][data-theme="dark"] dialog::backdrop { background: rgba(0, 0, 0, .5); }
 
 /* Paper: flat, ink on off-white, hairlines instead of shadows, tighter corners. */
