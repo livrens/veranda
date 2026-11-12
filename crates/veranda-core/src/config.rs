@@ -324,7 +324,11 @@ impl Default for Backup {
 /// Where official Veranda releases are published.
 pub const DEFAULT_UPDATE_REPO: &str = "livrens/veranda";
 /// Earlier homes of the project; treated like an empty setting.
-pub const LEGACY_UPDATE_REPOS: &[&str] = &["forallgame/padu", "forallgame/veranda", "livrensandi1/veranda"];
+pub const LEGACY_UPDATE_REPOS: &[&str] = &[
+    "forallgame/padu",
+    "forallgame/veranda",
+    "livrensandi1/veranda",
+];
 
 impl Update {
     /// Configured repository, or the official one when the field is empty.
@@ -333,7 +337,11 @@ impl Update {
         // Empty, or one of the addresses this project had before: a config written in the
         // Padu days or under the previous account would otherwise keep checking a repository
         // that no longer publishes releases.
-        if r.is_empty() || LEGACY_UPDATE_REPOS.iter().any(|old| old.eq_ignore_ascii_case(r)) {
+        if r.is_empty()
+            || LEGACY_UPDATE_REPOS
+                .iter()
+                .any(|old| old.eq_ignore_ascii_case(r))
+        {
             DEFAULT_UPDATE_REPO
         } else {
             r
