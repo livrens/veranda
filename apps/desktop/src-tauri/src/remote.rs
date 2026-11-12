@@ -167,7 +167,7 @@ pub async fn term_stats(
             return Ok(None);
         }
         if let Some((at, st)) = &e.stats
-            && at.elapsed() < Duration::from_secs(5)
+            && at.elapsed() < Duration::from_secs(4)
         {
             return Ok(Some(st.clone()));
         }

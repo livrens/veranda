@@ -298,6 +298,12 @@
   }
   // Tooltip: every local filesystem plus the total the way cloud consoles count it (all disks
   // together, used / size), so the number here and the number there can be compared.
+  // all local disks together (used / size), the figure cloud consoles usually show
+  function allDisks(st) {
+    if (!st.disks || st.disks.length < 2) return "";
+    const used = st.disks.reduce((a, d) => a + d.used_kb, 0), total = st.disks.reduce((a, d) => a + d.total_kb, 0);
+    return total ? ` · ${Math.round((used / total) * 100)}% ${t("rm.statsAll")}` : "";
+  }
   function diskTitle(st) {
     if (!st.disks?.length) return "";
     const lines = st.disks.map((d) => `${d.mount}: ${fmtG(d.used_kb)} ${t("rm.statsOf")} ${fmtG(d.total_kb)} (${Math.round((d.used_kb / d.total_kb) * 100)}%)`);
@@ -311,14 +317,18 @@
     const box = $(".term-stats", x.el); if (!box) return;
     const st = x.stats;
     const show = statsOn() && x.info?.kind !== "local" && !x.closed && !!st;
+    const wasHidden = box.classList.contains("hidden");
     box.classList.toggle("hidden", !show);
+    // the strip changes the height left for the terminal: recount rows or the bottom lines
+    // (the prompt) end up below the edge
+    if (wasHidden === show) requestAnimationFrame(() => { try { x.fit.fit(); x.term.scrollToBottom(); } catch (e) {} });
     if (!show) return;
     const cpuT = st.load1 != null ? `${t("rm.statsLoad")} ${st.load1.toFixed(2)}${st.cores ? ` · ${st.cores} ${t("rm.statsCores")}` : ""}` : "";
     const memPct = st.mem_total_kb ? (st.mem_used_kb / st.mem_total_kb) * 100 : null;
     const diskPct = st.disk_total_kb ? (st.disk_used_kb / st.disk_total_kb) * 100 : null;
     box.innerHTML = meter("CPU", st.cpu, st.cpu == null ? "…" : `${st.cpu.toFixed(0)}%`, cpuT)
-      + meter("RAM", memPct, st.mem_total_kb ? `${fmtG(st.mem_used_kb)} / ${fmtG(st.mem_total_kb)}` : "—", st.mem_total_kb ? `${fmtG(st.mem_used_kb)} ${t("rm.statsOf")} ${fmtG(st.mem_total_kb)}` : "")
-      + meter("Disk", diskPct, st.disk_total_kb ? `${diskPct.toFixed(0)}%${st.disk_mount && st.disk_mount !== "/" ? " " + st.disk_mount : ""}` : "—", diskTitle(st))
+      + meter("RAM", memPct, st.mem_total_kb ? `${memPct.toFixed(0)}% · ${fmtG(st.mem_used_kb)} / ${fmtG(st.mem_total_kb)}` : "—", st.mem_total_kb ? `${fmtG(st.mem_used_kb)} ${t("rm.statsOf")} ${fmtG(st.mem_total_kb)} (${t("rm.statsMemNote")})` : "")
+      + meter("Disk", diskPct, st.disk_total_kb ? `${diskPct.toFixed(0)}% ${st.disk_mount || "/"}${allDisks(st)}` : "—", diskTitle(st))
       + (st.uptime_secs ? `<span class="tsu">${t("rm.statsUp")} ${fmtUp(st.uptime_secs)}</span>` : "");
   }
   let statsTimer = null;
@@ -334,7 +344,7 @@
     } catch (e) { /* a server without /proc or a dropped channel: keep the last values */ }
     finally { x.statsBusy = false; }
   }
-  function scheduleStats() { clearInterval(statsTimer); statsTimer = setInterval(() => pollStats(false), 10000); setTimeout(() => pollStats(false), 400); }
+  function scheduleStats() { clearInterval(statsTimer); statsTimer = setInterval(() => pollStats(false), 5000); setTimeout(() => pollStats(false), 400); }
   function updateBar(x) {
     renderStats(x);
     const bar = $(".term-bar", x.el); if (!bar) return;
@@ -357,6 +367,7 @@
     $(".term-head", el).innerHTML = barMarkup(x);
     el.style.background = xtermTheme().background;
     term.open($(".term-view", el));
+    new ResizeObserver(() => { if (x.el.classList.contains("active")) { try { fit.fit(); } catch (e) {} } }).observe($(".term-view", el));
     term.onData((d) => { if (!x.closed) invoke("term_write", { id, data: d }).catch(() => {}); });
     term.onResize(({ cols, rows }) => { if (!x.closed) invoke("term_resize", { id, cols, rows }).catch(() => {}); });
     term.onTitleChange((title) => { x.title = title; renderTabs(); });
@@ -553,7 +564,11 @@
     if (ev.detail === "sftp" && !R.panes.local.path) loadPane("local", settings().sftp_local_root || "");
     if (ev.detail === "knownhosts") loadKnownHosts();
   });
-  listen("term-out", (ev) => { const x = R.terms.get(ev.payload.id); if (x) x.term.write(b64(ev.payload.data)); });
+  listen("term-out", (ev) => {
+    const x = R.terms.get(ev.payload.id); if (!x) return;
+    const atBottom = x.term.buffer.active.viewportY >= x.term.buffer.active.baseY;
+    x.term.write(b64(ev.payload.data), () => { if (atBottom) x.term.scrollToBottom(); });
+  });
   listen("term-state", (ev) => {
     const x = R.terms.get(ev.payload.id); if (!x) return;
     x.info = { ...x.info, ...ev.payload };

@@ -11,6 +11,11 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 ## [Unreleased]
 
 ### Fixed
+- Terminal: the view is sized again whenever the stats strip, search row or window changes the
+  space, so the bottom lines (the prompt) are no longer hidden below the edge; new output keeps
+  the view at the bottom unless you scrolled up on purpose.
+- Terminal stats refresh every 5 s; RAM shows its percentage and Disk shows the all-disks figure
+  next to the fullest mount, so the numbers line up with cloud consoles.
 - Updates: a config that still names an earlier home of the project (`forallgame/padu`,
   `forallgame/veranda`, `livrensandi1/veranda`) in `[update] repo` is treated like an empty
   setting, so the check goes to the current repository.

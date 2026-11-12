@@ -221,7 +221,9 @@ the local shell program and whether closing a session asks first.
 Under the bar of an SSH terminal a thin strip shows **CPU**, **RAM** and **Disk** of the
 server plus its uptime. Disk is the fullest local filesystem (the one that runs out first; its
 mount is shown when it is not `/`); hover it for every mount and the all-disks total that cloud
-consoles usually report, which is why their percentage can be lower. Values are read from `/proc` and `df` on the existing connection every 10 seconds
+consoles usually report, which is why their percentage can be lower; the all-disks figure is shown next to it when the
+server has more than one disk. CPU is the average over the last refresh (5 seconds); RAM is total
+minus available, so consoles that count cache as used show more. Values are read from `/proc` and `df` on the existing connection every 10 seconds
 while that terminal is the visible one. It costs the server one tiny command and the app nothing
 noticeable; nothing runs while the tab is hidden. Click the strip to hide it; the terminal
 settings (gear button) have a checkbox to bring it back. Servers
