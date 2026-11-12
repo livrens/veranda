@@ -323,12 +323,21 @@ impl Default for Backup {
 
 /// Where official Veranda releases are published.
 pub const DEFAULT_UPDATE_REPO: &str = "livrens/veranda";
+/// Earlier homes of the project; treated like an empty setting.
+pub const LEGACY_UPDATE_REPOS: &[&str] = &["forallgame/padu", "forallgame/veranda", "livrensandi1/veranda"];
 
 impl Update {
     /// Configured repository, or the official one when the field is empty.
     pub fn repo_or_default(&self) -> &str {
         let r = self.repo.trim();
-        if r.is_empty() { DEFAULT_UPDATE_REPO } else { r }
+        // Empty, or one of the addresses this project had before: a config written in the
+        // Padu days or under the previous account would otherwise keep checking a repository
+        // that no longer publishes releases.
+        if r.is_empty() || LEGACY_UPDATE_REPOS.iter().any(|old| old.eq_ignore_ascii_case(r)) {
+            DEFAULT_UPDATE_REPO
+        } else {
+            r
+        }
     }
 }
 
@@ -487,6 +496,23 @@ pub fn is_repo_slug(s: &str) -> bool {
             ok(a) && ok(b)
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod update_repo_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_repositories_fall_back_to_the_current_one() {
+        let mut u = Update::default();
+        assert_eq!(u.repo_or_default(), DEFAULT_UPDATE_REPO);
+        u.repo = "forallgame/padu".into();
+        assert_eq!(u.repo_or_default(), DEFAULT_UPDATE_REPO);
+        u.repo = "LivrenSandi1/veranda".into();
+        assert_eq!(u.repo_or_default(), DEFAULT_UPDATE_REPO);
+        u.repo = "someone/fork".into();
+        assert_eq!(u.repo_or_default(), "someone/fork");
     }
 }
 

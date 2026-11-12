@@ -10,6 +10,11 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 
 ## [Unreleased]
 
+### Fixed
+- Updates: a config that still names an earlier home of the project (`forallgame/padu`,
+  `forallgame/veranda`, `livrensandi1/veranda`) in `[update] repo` is treated like an empty
+  setting, so the check goes to the current repository.
+
 ## [1.0.10] - 2026-11-12
 
 ### Changed
