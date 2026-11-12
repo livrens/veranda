@@ -1,0 +1,891 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Veranda</title>
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="vendor/xterm/xterm.css">
+  <link rel="stylesheet" href="remote.css">
+</head>
+<body>
+<div id="lock-screen" class="lock hidden" hidden>
+  <form id="lock-form" class="lock-card" autocomplete="off">
+    <div class="brand lock-brand">
+      <img src="brand.png" class="brand-dark" width="40" height="40" alt="" aria-hidden="true">
+      <img src="brand-light.png" class="brand-light" width="40" height="40" alt="" aria-hidden="true">
+      <span>Veranda</span>
+    </div>
+    <h1 data-i18n="lock.title">Locked</h1>
+    <p class="sub" data-i18n="lock.hint">Enter your PIN or passphrase. Services keep running in the background.</p>
+    <input id="lock-secret" type="password" autocomplete="current-password" spellcheck="false" data-i18n-ph="lock.placeholder" placeholder="PIN or passphrase" aria-label="PIN or passphrase">
+    <input id="lock-code" class="hidden" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" spellcheck="false" data-i18n-ph="lock.codePlaceholder" placeholder="6-digit code from your authenticator app" aria-label="Authenticator code">
+    <div class="lock-err" id="lock-err" aria-live="polite"></div>
+    <button class="btn primary" type="submit" id="btn-unlock"><i class="ic" data-icon="lock"></i><span data-i18n="lock.unlock">Unlock</span></button>
+  </form>
+</div>
+<div id="app">
+  <aside class="side">
+    <div class="brand">
+      <img src="brand.png" class="brand-dark" width="30" height="30" alt="" aria-hidden="true">
+      <img src="brand-light.png" class="brand-light" width="30" height="30" alt="" aria-hidden="true">
+      <span>Veranda</span>
+    </div>
+    <div class="nav-search">
+      <i class="ic" data-icon="search"></i>
+      <input id="nav-search" type="search" autocomplete="off" spellcheck="false" data-i18n-ph="nav.search" placeholder="Search menu or service…" aria-label="Search menu or service">
+      <kbd>Ctrl K</kbd>
+    </div>
+    <nav class="nav" id="nav">
+      <div class="sgroup local-nav">
+        <h4 data-i18n="group.local">Local</h4>
+        <button class="nav-item active" data-tab="dashboard"><i class="ic" data-icon="overview"></i><span data-i18n="nav.overview">Overview</span></button>
+        <button class="nav-item" data-tab="sites"><i class="ic" data-icon="sites"></i><span data-i18n="nav.sites">Sites</span></button>
+        <button class="nav-item" data-tab="database"><i class="ic" data-icon="database"></i><span data-i18n="nav.database">Database</span></button>
+        <button class="nav-item" data-tab="logs"><i class="ic" data-icon="logs"></i><span data-i18n="nav.logs">Logs</span></button>
+        <button class="nav-item" data-tab="files" data-module="files"><i class="ic" data-icon="file"></i><span data-i18n="nav.files">Files</span></button>
+      </div>
+      <div class="sgroup remote-nav" data-module="remote">
+        <h4 data-i18n="group.remote">Remote</h4>
+        <button class="nav-item" data-tab="hosts"><i class="ic" data-icon="hosts"></i><span data-i18n="nav.hosts">Hosts</span></button>
+        <button class="nav-item" data-tab="terminal"><i class="ic" data-icon="terminal"></i><span data-i18n="nav.terminal">Terminal</span><b class="nav-count hidden" id="term-count"></b></button>
+        <button class="nav-item" data-tab="sftp"><i class="ic" data-icon="sftp"></i><span>SFTP</span></button>
+        <button class="nav-item" data-tab="forward"><i class="ic" data-icon="forward"></i><span data-i18n="nav.forward">Port forwarding</span><b class="nav-count hidden" id="fwd-count"></b></button>
+        <button class="nav-item" data-tab="snippets"><i class="ic" data-icon="snippets"></i><span data-i18n="nav.snippets">Snippets</span></button>
+        <button class="nav-item" data-tab="keychain"><i class="ic" data-icon="keychain"></i><span data-i18n="nav.keychain">Keychain</span></button>
+        <button class="nav-item" data-tab="knownhosts"><i class="ic" data-icon="knownhosts"></i><span data-i18n="nav.knownHosts">Known hosts</span></button>
+        <button class="nav-item" data-tab="history"><i class="ic" data-icon="history"></i><span data-i18n="nav.history">History</span></button>
+      </div>
+      <div id="svc-nav"></div>
+    </nav>
+    <div class="side-foot">
+      <button class="nav-item" data-tab="settings"><i class="ic" data-icon="settings"></i><span data-i18n="nav.settings">Settings</span></button>
+      <div class="foot-row">
+        <div class="foot-btns">
+          <button class="icon-btn small hidden" id="btn-lock" data-i18n-title="lock.lockNow" title="Lock now"><i class="ic" data-icon="lock"></i></button>
+          <button class="icon-btn small" id="theme-toggle" title="Theme"><i class="ic ic-sun" data-icon="sun"></i><i class="ic ic-moon" data-icon="moon"></i></button>
+        </div>
+        <span class="version" id="version"></span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="banner update hidden" id="update-banner">
+      <div class="update-text"><strong id="update-version"></strong><span id="update-notes"></span></div>
+      <div class="update-actions">
+        <div class="progress mini hidden" id="update-progress"><div class="bar"><div class="fill"></div></div><span class="txt"></span></div>
+        <button class="btn small primary" id="btn-update-install" data-i18n="update.install">Update now</button>
+        <button class="btn small" id="btn-update-page" data-i18n="update.page">Release page</button>
+        <button class="icon-btn small" id="btn-update-dismiss" title="Dismiss"><i class="ic" data-icon="x"></i></button>
+      </div>
+    </div>
+
+    <!-- Overview -->
+    <section id="tab-dashboard" class="tab active">
+      <header class="top">
+        <div class="status" id="global-status"><span class="dot"></span><span class="txt" data-i18n="status.stopped">Stopped</span></div>
+        <div class="spacer"></div>
+        <button class="btn primary" id="btn-start-all"><i class="ic" data-icon="play"></i><span data-i18n="btn.startAll">Start All</span></button>
+        <button class="btn" id="btn-stop-all"><i class="ic" data-icon="stop"></i><span data-i18n="btn.stopAll">Stop All</span></button>
+      </header>
+      <div class="banner hidden" id="hosts-notice">
+        <span data-i18n="notice.hosts">Hosts file needs an update</span>
+        <button class="btn small" id="btn-hosts-sync" data-i18n="btn.update">Update</button>
+      </div>
+      <div class="groups" id="groups"></div>
+      <div class="list" id="services"></div>
+      <div class="quick">
+        <button class="tile" data-open="web"><i class="ic" data-icon="web"></i><span data-i18n="quick.web">Web</span></button>
+        <button class="tile" data-open="adminer"><i class="ic" data-icon="database"></i><span data-i18n="quick.database">Database</span></button>
+        <button class="tile" data-open="terminal"><i class="ic" data-icon="terminal"></i><span data-i18n="quick.terminal">Terminal</span></button>
+        <button class="tile" data-open="www"><i class="ic" data-icon="folder"></i><span data-i18n="quick.root">Folder</span></button>
+        <button class="tile" data-tab="logs"><i class="ic" data-icon="logs"></i><span data-i18n="quick.logs">Logs</span></button>
+      </div>
+    </section>
+
+    <!-- One page per service / tool, rendered by app.js -->
+    <section id="tab-service" class="tab"><div id="service-page"></div></section>
+
+    <!-- Sites -->
+    <section id="tab-sites" class="tab">
+      <header class="top">
+        <h1 data-i18n="nav.sites">Sites</h1>
+        <div class="spacer"></div>
+        <button class="btn" id="btn-migrate"><i class="ic" data-icon="migrate"></i><span data-i18n="btn.migrate">Migrate</span></button>
+        <button class="btn" id="btn-sync-sites"><i class="ic" data-icon="refresh"></i><span data-i18n="btn.sync">Sync</span></button>
+        <button class="btn primary" id="btn-new-project"><i class="ic" data-icon="plus"></i><span data-i18n="btn.newProject">New project</span></button>
+      </header>
+      <p class="sub" id="sites-hint"></p>
+      <div class="list" id="sites"></div>
+      <details class="card compact">
+        <summary data-i18n="sites.manual">Add external folder</summary>
+        <form id="form-site" class="inline">
+          <input name="hostname" placeholder="myapp.test" required>
+          <input name="path" placeholder="/path/to/project" required>
+          <input name="public" placeholder="public" title="optional sub folder">
+          <button type="submit" class="btn primary" data-i18n="btn.add">Add</button>
+        </form>
+      </details>
+    </section>
+
+    <!-- Database -->
+    <section id="tab-database" class="tab">
+      <header class="top">
+        <h1 data-i18n="nav.database">Database</h1>
+        <div class="spacer"></div>
+        <button class="btn" data-open="adminer">Adminer</button>
+        <button class="btn" data-open="phpmyadmin">phpMyAdmin</button>
+        <button class="btn" id="btn-db-backup"><i class="ic" data-icon="backup"></i><span data-i18n="db.backup">Backup</span></button>
+      </header>
+      <div class="card kv-card">
+        <div class="kv"><span data-i18n="db.host">Host</span><code id="db-host"></code><button class="icon-btn small" data-copy="#db-host" title="Copy"><i class="ic" data-icon="copy"></i></button></div>
+        <div class="kv"><span data-i18n="db.user">User</span><code>root</code></div>
+        <div class="kv"><span data-i18n="db.password">Password</span><code id="db-password" class="secret">••••••••••••</code>
+          <button class="icon-btn small" id="btn-db-show" title="Show"><i class="ic" data-icon="eye"></i></button>
+          <button class="icon-btn small" data-copy="#db-password" data-copy-secret="1" title="Copy"><i class="ic" data-icon="copy"></i></button>
+          <button class="btn small" id="btn-db-rotate" data-i18n="db.rotate">New password</button>
+          <button class="btn small" id="btn-db-nopass" data-i18n="db.noPassword">No password</button></div>
+      </div>
+      <form id="form-db" class="inline">
+        <input name="name" placeholder="database_name" pattern="[A-Za-z0-9_\-]{1,64}" required>
+        <button type="submit" class="btn primary" data-i18n="db.create">Create</button>
+      </form>
+      <div class="chips" id="db-list"></div>
+    </section>
+
+
+    <!-- ============ Remote (SSH client) ============ -->
+    <section id="tab-hosts" class="tab">
+      <header class="top">
+        <h1 data-i18n="nav.hosts">Hosts</h1>
+        <div class="spacer"></div>
+        <form id="quick-connect" class="quick-connect"><input name="target" placeholder="user@host:22" autocomplete="off" spellcheck="false"><button type="submit" class="btn small primary"><i class="ic" data-icon="connect"></i><span data-i18n="rm.quickConnect">Connect</span></button></form>
+        <button class="icon-btn rm-privacy-toggle" type="button" title="Privacy mode"><i class="ic" data-icon="eye"></i></button>
+        <button class="btn" id="btn-rm-import"><i class="ic" data-icon="import"></i><span data-i18n="rm.import">Import</span></button>
+        <button class="btn" id="btn-rm-new-group"><i class="ic" data-icon="group"></i><span data-i18n="rm.newGroup">New group</span></button>
+        <button class="btn primary" id="btn-rm-new-host"><i class="ic" data-icon="plus"></i><span data-i18n="rm.newHost">New host</span></button>
+      </header>
+      <div class="rm-toolbar">
+        <div class="rm-search"><i class="ic" data-icon="search"></i><input id="rm-host-search" data-i18n-ph="rm.searchHosts" placeholder="Search hosts, tags, addresses"></div>
+        <div class="rm-tags" id="rm-tag-filter"></div>
+      </div>
+      <div id="rm-host-list"></div>
+    </section>
+
+    <section id="tab-terminal" class="tab tab-terminal">
+      <div class="term-tabs" id="term-tabs"></div>
+      <div class="term-stage hidden" id="term-stage"><aside class="term-side hidden" id="term-side"></aside></div>
+      <div class="term-empty" id="term-empty">
+        <i class="ic" data-icon="terminal"></i>
+        <p data-i18n="rm.termEmpty">No terminal open. Connect to a host or open a local shell.</p>
+        <div class="btn-row">
+          <button class="btn" data-tab="hosts"><i class="ic" data-icon="hosts"></i><span data-i18n="nav.hosts">Hosts</span></button>
+          <button class="btn primary" id="btn-term-local"><i class="ic" data-icon="local"></i><span data-i18n="rm.localTerminal">Local terminal</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-files" class="tab tab-files" data-module="files">
+      <header class="top">
+        <h1 data-i18n="nav.files">Files</h1>
+        <div class="spacer"></div>
+        <select id="files-root" class="rm-host-select"></select>
+        <button class="btn" id="btn-files-open"><i class="ic" data-icon="folder"></i><span data-i18n="files.openFolder">Open folder</span></button>
+        <button class="btn" id="btn-files-newfile"><i class="ic" data-icon="plus"></i><span data-i18n="files.newFile">New file</span></button>
+        <button class="icon-btn" id="btn-files-newdir" title="New folder"><i class="ic" data-icon="folder"></i></button>
+        <button class="icon-btn" id="btn-files-refresh" title="Refresh"><i class="ic" data-icon="refresh"></i></button>
+      </header>
+      <div class="files-layout">
+        <aside class="files-side">
+          <div class="files-side-head"><span class="mono" id="files-root-path"></span><label class="check small" id="files-hidden-label"><input type="checkbox" id="files-hidden"><span data-i18n="files.hidden">Show hidden</span></label></div>
+          <div class="files-search"><i class="ic" data-icon="search"></i><input type="text" id="files-search" data-i18n-ph="files.search" placeholder="Search file names…" autocomplete="off" spellcheck="false"></div>
+          <div class="files-tree" id="files-tree"></div>
+        </aside>
+        <div class="files-main">
+          <div class="empty" id="ed-empty"><i class="ic" data-icon="file"></i><span data-i18n="files.empty">Pick a file on the left. Markdown gets a preview, CSV a table, JSON a check; everything else is coloured by language.</span></div>
+          <div class="ed-pane hidden" id="ed-pane">
+            <div class="ed-bar">
+              <span class="ed-title"><b id="ed-name"></b><i class="ed-dot hidden" id="ed-dirty" title="Unsaved changes"></i></span>
+              <span class="ed-path mono" id="ed-path"></span>
+              <span class="spacer"></span>
+              <span class="seg hidden" id="ed-modes"><button type="button" data-mode="edit" data-i18n="files.edit">Edit</button><button type="button" data-mode="split" data-i18n="files.split">Split</button><button type="button" data-mode="preview" data-i18n="files.preview">Preview</button></span>
+              <button class="icon-btn small hidden" id="btn-ed-format" title="Format JSON"><i class="ic" data-icon="check"></i></button>
+              <button class="icon-btn small" id="btn-ed-wrap" title="Wrap lines"><i class="ic" data-icon="split"></i></button>
+              <button class="icon-btn small" id="btn-ed-reload" title="Reload from disk"><i class="ic" data-icon="refresh"></i></button>
+              <button class="icon-btn small" id="btn-ed-external" title="Open with system editor"><i class="ic" data-icon="open"></i></button>
+              <button class="btn small primary" id="btn-ed-save" disabled><i class="ic" data-icon="download"></i><span data-i18n="btn.save">Save</span></button>
+              <button class="icon-btn small" id="btn-ed-close" title="Close"><i class="ic" data-icon="x"></i></button>
+            </div>
+            <div class="ed-body" id="ed-body" data-mode="edit">
+              <div class="ed-editor">
+                <div class="ed-gutter" id="ed-gutter"></div>
+                <pre class="ed-hl" id="ed-hl" aria-hidden="true"><code></code></pre>
+                <textarea id="ed-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
+              </div>
+              <div class="ed-preview" id="ed-preview"></div>
+            </div>
+            <div class="ed-status mono"><span id="ed-lang"></span><span id="ed-eol"></span><span id="ed-stat-lines"></span><span class="spacer"></span><span data-i18n="files.saveHint">Ctrl+S saves</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-sftp" class="tab tab-sftp">
+      <header class="top">
+        <h1>SFTP</h1>
+        <div class="spacer"></div>
+        <select id="sftp-host" class="rm-host-select"></select>
+        <button class="btn primary" id="btn-sftp-connect"><i class="ic" data-icon="connect"></i><span data-i18n="rm.connect">Connect</span></button>
+        <button class="btn" id="btn-sftp-disconnect" disabled><i class="ic" data-icon="x"></i><span data-i18n="rm.disconnect">Disconnect</span></button>
+      </header>
+      <div class="sftp-panes">
+        <div class="pane" id="pane-local" data-side="local"></div>
+        <div class="pane-mid">
+          <button class="icon-btn" id="btn-sftp-upload" title="Upload" disabled><i class="ic" data-icon="chevron"></i></button>
+          <button class="icon-btn" id="btn-sftp-download" title="Download" disabled><i class="ic ic-flip" data-icon="chevron"></i></button>
+        </div>
+        <div class="pane" id="pane-remote" data-side="remote"></div>
+      </div>
+      <div class="transfers" id="sftp-transfers"></div>
+    </section>
+
+    <section id="tab-forward" class="tab">
+      <header class="top">
+        <h1 data-i18n="nav.forward">Port forwarding</h1>
+        <div class="spacer"></div>
+        <button class="btn primary" id="btn-fwd-new"><i class="ic" data-icon="plus"></i><span data-i18n="rm.newRule">New rule</span></button>
+      </header>
+      <p class="sub" data-i18n="rm.forwardHint">Local: a port here reaches a service behind the server. Remote: a port on the server reaches a service here. Dynamic: a SOCKS5 proxy here that browses through the server.</p>
+      <div class="list" id="fwd-list"></div>
+    </section>
+
+    <section id="tab-snippets" class="tab">
+      <header class="top">
+        <h1 data-i18n="nav.snippets">Snippets</h1>
+        <div class="spacer"></div>
+        <button class="btn hidden" id="btn-snip-lock-now"><i class="ic" data-icon="lock"></i><span data-i18n="rm.lockNow">Lock</span></button>
+        <button class="btn hidden" id="btn-snip-pass"><i class="ic" data-icon="key"></i><span id="btn-snip-pass-text" data-i18n="rm.setPassword">Set password</span></button>
+        <button class="btn primary" id="btn-snip-new"><i class="ic" data-icon="plus"></i><span data-i18n="rm.newSnippet">New snippet</span></button>
+      </header>
+      <p class="sub" data-i18n="rm.snippetHint">Commands you run often. Open the Snippets panel in a terminal to send them with one click, or run one on several hosts at once and compare the output. Contents stay hidden in lists; a password keeps this page and the panel locked.</p>
+      <div id="snip-list"></div>
+      <div class="card hidden" id="snip-output"></div>
+    </section>
+
+    <section id="tab-keychain" class="tab">
+      <header class="top">
+        <h1 data-i18n="nav.keychain">Keychain</h1>
+        <div class="spacer"></div>
+        <button class="btn" id="btn-key-import"><i class="ic" data-icon="import"></i><span data-i18n="rm.importKey">Import key</span></button>
+        <button class="btn primary" id="btn-key-new"><i class="ic" data-icon="key"></i><span data-i18n="rm.newKey">New key</span></button>
+        <button class="btn primary" id="btn-ident-new"><i class="ic" data-icon="identity"></i><span data-i18n="rm.newIdentity">New identity</span></button>
+      </header>
+      <p class="sub" id="keychain-note"></p>
+      <h2 class="rm-h2" data-i18n="rm.keys">Keys</h2>
+      <div class="list" id="key-list"></div>
+      <h2 class="rm-h2" data-i18n="rm.identities">Identities</h2>
+      <div class="list" id="ident-list"></div>
+    </section>
+
+    <section id="tab-knownhosts" class="tab">
+      <header class="top">
+        <h1 data-i18n="nav.knownHosts">Known hosts</h1>
+        <div class="spacer"></div>
+        <button class="icon-btn" id="btn-kh-refresh" title="Refresh"><i class="ic" data-icon="refresh"></i></button>
+      </header>
+      <p class="sub" data-i18n="rm.knownHint">Server keys you accepted. Remove an entry to be asked again on the next connection.</p>
+      <div class="list" id="kh-list"></div>
+    </section>
+
+    <section id="tab-history" class="tab">
+      <header class="top">
+        <h1 data-i18n="nav.history">History</h1>
+        <div class="spacer"></div>
+        <button class="icon-btn rm-privacy-toggle" type="button" title="Privacy mode"><i class="ic" data-icon="eye"></i></button>
+        <button class="btn" id="btn-hist-clear"><i class="ic" data-icon="trash"></i><span data-i18n="btn.clear">Clear</span></button>
+      </header>
+      <div class="list" id="hist-list"></div>
+    </section>
+
+    <!-- Logs -->
+    <section id="tab-logs" class="tab">
+      <header class="top">
+        <h1 data-i18n="nav.logs">Logs</h1>
+        <div class="spacer"></div>
+        <select id="log-file" class="log-select"></select>
+        <button class="icon-btn" id="btn-log-refresh" title="Refresh"><i class="ic" data-icon="refresh"></i></button>
+        <button class="icon-btn" id="btn-log-clear" title="Clear"><i class="ic" data-icon="trash"></i></button>
+        <button class="icon-btn" data-open="logs" title="Open folder"><i class="ic" data-icon="folder"></i></button>
+      </header>
+      <div class="card activity" id="activity">
+        <div class="activity-head"><span data-i18n="logs.activity">Activity</span><button class="btn small ghost" id="btn-activity-clear" data-i18n="btn.clear">Clear</button></div>
+        <ul id="activity-list"></ul>
+      </div>
+      <pre class="logview" id="log-view"></pre>
+    </section>
+
+    <!-- Settings -->
+    <section id="tab-settings" class="tab">
+      <header class="top">
+        <h1 data-i18n="nav.settings">Settings</h1>
+        <div class="spacer"></div>
+        <button class="btn" data-open="config" title="veranda.toml" data-i18n="settings.editFile">Config file</button>
+        <button class="btn" data-open="phpini">php.ini</button>
+      </header>
+      <form id="form-settings" class="settings">
+        <section class="card">
+          <h2 data-i18n="settings.general">General</h2>
+          <div class="grid">
+            <label><span data-i18n="settings.root">Root</span><code id="root-path" class="path"></code></label>
+            <label><span data-i18n="settings.language">Language</span><select name="general.language"><option value="en">English</option><option value="id">Bahasa Indonesia</option></select></label>
+            <label><span>TLD</span><input name="general.tld" pattern="[a-z0-9]+"></label>
+            <label><span data-i18n="settings.docroot">Document root</span><input name="general.document_root" placeholder="root/www"></label>
+            <label><span data-i18n="settings.editor">Editor</span><input name="general.editor" placeholder="code"></label>
+            <label class="check"><input type="checkbox" name="general.auto_vhosts"><span data-i18n="settings.autoVhosts">Auto virtual hosts</span></label>
+            <label class="check"><input type="checkbox" name="general.smart_public_dir"><span data-i18n="settings.smartPublic">Serve public/ when present</span></label>
+            <label class="check"><input type="checkbox" name="general.auto_start"><span data-i18n="settings.autoStart">Start services on launch</span></label>
+            <label class="check"><input type="checkbox" name="general.start_minimized"><span data-i18n="settings.startMinimized">Start minimized</span></label>
+            <label class="check" data-os="linux"><input type="checkbox" name="general.hardware_acceleration"><span data-i18n="settings.gpu">GPU rendering (restart to apply)</span></label>
+            <label class="check"><input type="checkbox" name="general.slim_packages"><span data-i18n="settings.slim" title="Debug server builds, test suites, static libraries, man pages and headers are removed right after a package is extracted. Nothing the stack runs is touched.">Slim packages (no debug/test files)</span></label>
+            <label><span data-i18n="settings.closeAction">Close button</span><select name="general.close_action"><option value="ask" data-i18n="close.ask">Ask every time</option><option value="tray" data-i18n="close.tray">Hide to tray</option><option value="quit" data-i18n="close.quit">Quit</option></select></label>
+          </div>
+        </section>
+        <section class="card">
+          <h2 data-i18n="settings.appearance">Appearance</h2>
+          <div class="grid">
+            <label><span data-i18n="settings.themeMode">Theme</span><select id="set-theme-mode"><option value="" data-i18n="theme.system">Follow system</option><option value="light" data-i18n="theme.light">Light</option><option value="dark" data-i18n="theme.dark">Dark</option></select></label>
+            <label><span data-i18n="settings.skin">Look</span><select id="set-skin"><option value="" data-i18n="skin.porch">Porch</option><option value="glass" data-i18n="skin.glass">Glass</option><option value="paper" data-i18n="skin.paper">Paper</option><option value="charcoal" data-i18n="skin.charcoal">Charcoal</option></select></label>
+          </div>
+          <p class="sub" data-i18n="settings.skinHint">Porch is the warm default. Glass is translucent with soft depth, Paper is flat and quiet, Charcoal is neutral grey with a brass accent. Saved on this computer, applied at once.</p>
+        </section>
+        <section class="card">
+          <h2 data-i18n="settings.security">Security</h2>
+          <div class="lock-row">
+            <div><b data-i18n="lock.name">App lock</b><div class="sub" id="lock-state"></div></div>
+            <div class="btn-row">
+              <button type="button" class="btn" id="btn-lock-set"></button>
+              <button type="button" class="btn danger hidden" id="btn-lock-off" data-i18n="lock.disable">Turn off</button>
+            </div>
+          </div>
+          <div class="lock-row hidden" id="totp-row">
+            <div><b data-i18n="totp.name">Two-factor (authenticator app)</b><div class="sub" id="totp-state"></div></div>
+            <div class="btn-row">
+              <button type="button" class="btn" id="btn-totp-on" data-i18n="totp.enable">Enable</button>
+              <button type="button" class="btn danger hidden" id="btn-totp-off" data-i18n="totp.disable">Turn off</button>
+            </div>
+          </div>
+          <div class="grid half">
+            <label><span data-i18n="lock.autoLock">Lock after</span><select id="lock-timer"><option value="0" data-i18n="lock.manualOnly">manual only</option><option value="1">1 min</option><option value="5">5 min</option><option value="10">10 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label>
+          </div>
+          <p class="sub" data-i18n="lock.storageHint">Only a salted hash is stored (PBKDF2-SHA256, 600,000 rounds) in etc/secrets/app-lock.json, readable by your user account only. The lock guards this window and its commands; to protect the files themselves on a lost laptop, turn on disk encryption (BitLocker, FileVault or LUKS) and a login password.</p>
+        </section>
+        <section class="card">
+          <h2 data-i18n="settings.web">Web</h2>
+          <div class="grid">
+            <label><span>HTTP</span><input type="number" name="web.http_port" min="1" max="65535"></label>
+            <label><span>HTTPS</span><input type="number" name="web.https_port" min="1" max="65535"></label>
+            <label class="check"><input type="checkbox" name="web.ssl"><span>HTTPS</span></label>
+            <label class="check"><input type="checkbox" name="web.autoindex"><span data-i18n="settings.autoindex">Directory listing</span></label>
+          </div>
+          <button type="button" class="btn" id="btn-ssl-trust" data-i18n="settings.trustCa">Trust local CA</button>
+        </section>
+        <section class="card">
+          <h2>PHP</h2>
+          <div class="grid">
+            <label><span>FastCGI</span><input type="number" name="php.fcgi_port"></label>
+            <label><span data-i18n="settings.workers">Workers</span><input type="number" name="php.workers" min="1" max="64"></label>
+            <label><span>memory_limit</span><input name="php.memory_limit"></label>
+            <label><span>upload_max</span><input name="php.upload_max_filesize"></label>
+            <label><span>max_execution</span><input type="number" name="php.max_execution_time"></label>
+            <label><span data-i18n="settings.timezone">Timezone</span><input name="php.timezone"></label>
+          </div>
+        </section>
+        <section class="card">
+          <h2 data-i18n="settings.other">Databases, backups, updates</h2>
+          <div class="grid">
+            <label><span data-i18n="settings.dbPort">Database port</span><input type="number" name="db.port"></label>
+            <label><span data-i18n="settings.pgPort">PostgreSQL port</span><input type="number" name="pg.port"></label>
+            <label><span>MongoDB</span><input type="number" name="mongodb.port" placeholder="27017"></label>
+            <label><span data-i18n="settings.backupEvery">Backup every (h)</span><input type="number" name="backup.interval_hours" min="1"></label>
+            <label><span data-i18n="settings.backupKeep">Keep</span><input type="number" name="backup.keep" min="1"></label>
+            <label class="check"><input type="checkbox" name="backup.enabled"><span data-i18n="settings.backup">Auto backup</span></label>
+            <label class="check"><input type="checkbox" name="update.check_on_start"><span data-i18n="settings.checkOnStart">Check updates on start</span></label>
+            <label class="check"><input type="checkbox" name="update.auto_install"><span data-i18n="settings.autoInstall">Install updates automatically</span></label>
+          </div>
+        </section>
+        <section class="card" id="storage-card">
+          <h2 data-i18n="storage.title">Storage</h2>
+          <p class="sub" data-i18n="storage.hint">What the Veranda folder holds. Free space removes debug builds, test suites and static libraries from installed packages, gzips old SQL backups, deletes leftover downloads and trims oversized logs. Databases, projects and settings are never touched.</p>
+          <div class="usage" id="storage-usage"></div>
+          <div class="btn-row">
+            <button type="button" class="btn" id="btn-free-space"><i class="ic" data-icon="trash"></i><span data-i18n="storage.free">Free space now</span></button>
+            <span class="sub mono" id="free-space-status"></span>
+          </div>
+          <div id="free-space-report" class="report hidden"></div>
+        </section>
+        <section class="card" id="modules-card">
+          <h2 data-i18n="settings.modules">Modules</h2>
+          <p class="sub" data-i18n="settings.modulesHint">Veranda is a local web workbench: the server stack is always there; the rest can be switched off to keep the window plain. Nothing is uninstalled, the pages are only hidden.</p>
+          <div class="grid">
+            <label class="check"><input type="checkbox" name="modules.remote"><span data-i18n="module.remote">Remote (SSH, SFTP, snippets)</span></label>
+            <label class="check"><input type="checkbox" name="modules.files"><span data-i18n="module.files">Files (text editor)</span></label>
+            <label class="check"><input type="checkbox" name="modules.move"><span data-i18n="module.move">Move to another computer</span></label>
+          </div>
+        </section>
+        <section class="card" id="move-card" data-module="move">
+          <h2 data-i18n="move.title">Move to another computer</h2>
+          <p class="sub" data-i18n="move.hint">Pack your Veranda setup, projects, SSH and git keys, VS Code and Claude Code settings into one password-protected file. On the new computer (Linux, Windows or macOS) restore it with Veranda; packages, repositories and extensions are installed again there.</p>
+          <div class="btn-row">
+            <button type="button" class="btn primary" id="btn-move-create"><i class="ic" data-icon="download"></i><span data-i18n="move.create">Create bundle</span></button>
+            <button type="button" class="btn" id="btn-move-restore"><i class="ic" data-icon="upload"></i><span data-i18n="move.restore">Restore a bundle</span></button>
+          </div>
+        </section>
+        <div class="actions-row">
+          <button type="button" class="btn" id="btn-check-update" data-i18n="btn.checkUpdate">Check for updates</button>
+          <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+        </div>
+      </form>
+    </section>
+  </main>
+</div>
+
+<dialog id="dlg-project">
+  <form method="dialog" id="form-project">
+    <h2 data-i18n="project.title">New project</h2>
+    <label><span data-i18n="project.name">Name</span><input name="name" pattern="[a-z0-9][a-z0-9_\-]*" required placeholder="my-app" autocomplete="off"></label>
+    <label><span data-i18n="project.template">Template</span><select name="template" id="project-template"></select></label>
+    <label id="project-arg-row" class="hidden"><span id="project-arg-label">Package</span><input name="arg" placeholder="vendor/package"></label>
+    <label class="check"><input type="checkbox" name="create_db" checked><span data-i18n="project.createDb">Create database</span></label>
+    <p class="sub" id="project-url"></p>
+    <div class="actions-row">
+      <button type="button" class="btn" id="btn-project-cancel" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.create">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-move" class="wide">
+  <form method="dialog" id="form-move">
+    <h2 data-i18n="move.create">Create bundle</h2>
+    <p class="sub" data-i18n="move.createHint">Tick what to take along. Programs are not copied; the bundle remembers which packages, repositories, VS Code extensions and tools you had so they can be installed again.</p>
+    <div class="move-sections" id="move-sections"></div>
+    <div class="move-folders" id="move-folders"></div>
+    <div class="btn-row"><button type="button" class="btn small" id="btn-move-add-folder"><i class="ic" data-icon="folder"></i><span data-i18n="move.addFolder">Add folder</span></button>
+      <button type="button" class="btn small" id="btn-move-suggest"><i class="ic" data-icon="search"></i><span data-i18n="move.suggest">Find projects</span></button>
+      <label class="check"><input type="checkbox" name="heavy"><span data-i18n="move.heavy">Keep node_modules, vendor, target</span></label></div>
+    <div class="move-suggest hidden" id="move-suggest"></div>
+    <p class="sub mono" id="move-summary"></p>
+    <label><span data-i18n="move.file">Save as</span><input name="file" required spellcheck="false"><button type="button" class="btn small" id="btn-move-browse" data-i18n="btn.browse">Browse</button></label>
+    <div class="two">
+      <label><span data-i18n="db.password">Password</span><input type="password" name="password" minlength="8" autocomplete="new-password" required></label>
+      <label><span data-i18n="rm.confirmPassword">Confirm</span><input type="password" name="confirm" minlength="8" autocomplete="new-password" required></label>
+    </div>
+    <p class="sub" data-i18n="move.noRecovery">There is no recovery: without the password the bundle cannot be opened.</p>
+    <div class="progress hidden" id="move-progress"><svg class="spin" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10h-2.5A7.5 7.5 0 1 1 12 4.5z"/></svg><span class="txt"></span></div>
+    <div id="move-report" class="report hidden"></div>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-move" data-i18n="btn.close">Close</button>
+      <button type="submit" class="btn primary" id="btn-move-run" data-i18n="move.createNow">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-restore" class="wide">
+  <form method="dialog" id="form-restore">
+    <h2 data-i18n="move.restore">Restore a bundle</h2>
+    <label><span data-i18n="move.bundle">Bundle</span><input name="file" required spellcheck="false"><button type="button" class="btn small" id="btn-restore-browse" data-i18n="btn.browse">Browse</button></label>
+    <label><span data-i18n="db.password">Password</span><input type="password" name="password" autocomplete="current-password" required><button type="button" class="btn small" id="btn-restore-check" data-i18n="move.check">Open</button></label>
+    <div id="restore-info" class="hidden">
+      <p class="sub" id="restore-from"></p>
+      <div class="move-sections" id="restore-sections"></div>
+      <p class="sub mono" id="restore-summary"></p>
+      <label class="check"><input type="checkbox" name="finish" checked><span data-i18n="move.finish">Afterwards reinstall packages, clone missing repositories and install VS Code extensions</span></label>
+      <label class="check hidden" id="restore-winget-row"><input type="checkbox" name="winget"><span data-i18n="move.winget">Install missing tools with winget</span></label>
+      <p class="sub" data-i18n="move.backupNote">Files that already exist here are moved to backups/move-&lt;date&gt; before being replaced.</p>
+    </div>
+    <div class="progress hidden" id="restore-progress"><svg class="spin" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10h-2.5A7.5 7.5 0 1 1 12 4.5z"/></svg><span class="txt"></span></div>
+    <div id="restore-report" class="report hidden"></div>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-restore" data-i18n="btn.close">Close</button>
+      <button type="submit" class="btn primary" id="btn-restore-run" data-i18n="move.restoreNow" disabled>Restore</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-migrate" class="wide">
+  <form method="dialog" id="form-migrate">
+    <h2 data-i18n="migrate.title">Migrate from another stack</h2>
+    <p class="sub" data-i18n="migrate.hint">Projects become Veranda sites. Databases are copied through your running database server.</p>
+    <label><span data-i18n="migrate.from">From</span><select name="platform" id="migrate-platform"></select></label>
+    <p class="sub mono" id="migrate-detected"></p>
+    <label><span data-i18n="migrate.folder">Folder</span><input name="path" placeholder="/path/to/www" required><button type="button" class="btn small" id="btn-migrate-browse" data-i18n="btn.browse">Browse</button></label>
+    <div class="radio-row">
+      <label class="check"><input type="radio" name="mode" value="link" checked><span data-i18n="migrate.link">Link in place (no copy)</span></label>
+      <label class="check"><input type="radio" name="mode" value="copy"><span data-i18n="migrate.copy">Copy into document root</span></label>
+    </div>
+    <label class="check"><input type="checkbox" name="databases"><span data-i18n="migrate.db">Also import databases (source server must be running)</span></label>
+    <div id="migrate-db" class="hidden">
+      <div class="two"><label><span data-i18n="db.host">Host</span><input name="db_host" value="127.0.0.1"></label><label><span>Port</span><input type="number" name="db_port" value="3306"></label></div>
+      <div class="two"><label><span data-i18n="db.user">User</span><input name="db_user" value="root"></label><label><span data-i18n="db.password">Password</span><input type="password" name="db_password" autocomplete="off"></label></div>
+      <p class="sub" data-i18n="migrate.dbNote">Databases with the same name in Veranda are overwritten.</p>
+    </div>
+    <div class="migrate-prog hidden" id="migrate-progress">
+      <div class="progress"><svg class="spin" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10h-2.5A7.5 7.5 0 1 1 12 4.5z"/></svg><div class="bar"><div class="fill"></div></div><b class="pct">0%</b></div>
+      <div class="sub mono"><span class="txt"></span> <span class="detail"></span></div>
+      <p class="sub" data-i18n="migrate.background">You can close this window; the migration keeps running and the Migrate button shows its progress.</p>
+      <div class="btn-row">
+        <button type="button" class="btn small" id="btn-migrate-pause"><i class="ic" data-icon="pause"></i><span data-i18n="migrate.pause">Pause</span></button>
+        <button type="button" class="btn small danger" id="btn-migrate-cancel-run"><i class="ic" data-icon="x"></i><span data-i18n="migrate.cancel">Cancel after this database</span></button>
+      </div>
+    </div>
+    <div id="migrate-report" class="report hidden"></div>
+    <div class="actions-row">
+      <button type="button" class="btn" id="btn-migrate-cancel" data-i18n="btn.close">Close</button>
+      <button type="submit" class="btn primary" id="btn-migrate-run" data-i18n="btn.migrateNow">Migrate now</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-lock">
+  <form method="dialog" id="form-lock">
+    <h2 id="dlg-lock-title" data-i18n="lock.setTitle">Set app lock</h2>
+    <label id="lock-current-row"><span data-i18n="lock.current">Current</span><input name="current" type="password" autocomplete="current-password"></label>
+    <div class="radio-row" id="lock-kind-row">
+      <label class="check"><input type="radio" name="kind" value="pin" checked><span data-i18n="lock.kindPin">PIN (digits)</span></label>
+      <label class="check"><input type="radio" name="kind" value="password"><span data-i18n="lock.kindPassword">Password (any text)</span></label>
+    </div>
+    <label id="lock-new-row"><span data-i18n="lock.new">New</span><input name="new" type="password" autocomplete="new-password" minlength="4" maxlength="128"></label>
+    <label id="lock-confirm-row"><span data-i18n="lock.confirm">Repeat</span><input name="confirm" type="password" autocomplete="new-password" minlength="4" maxlength="128"></label>
+    <p class="sub" data-i18n="lock.setHint">At least 4 characters: digits for a PIN, anything for a password. There is no recovery; if you forget it, delete etc/secrets/app-lock.json while logged in to this computer.</p>
+    <div class="actions-row">
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close="dlg-lock" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="dlg-totp">
+  <form method="dialog" id="form-totp">
+    <h2 id="dlg-totp-title" data-i18n="totp.setTitle">Enable two-factor</h2>
+    <div id="totp-step1">
+      <p class="sub" data-i18n="totp.hint">Adds a 6-digit code from an authenticator app (Aegis, Google Authenticator, Authy, 1Password, Bitwarden…) after your PIN or password. Confirm with your current PIN or password first.</p>
+      <label><span data-i18n="lock.current">Current</span><input name="current" type="password" autocomplete="current-password"></label>
+    </div>
+    <div id="totp-step2" class="hidden">
+      <p class="sub" data-i18n="totp.enterKey">In the app choose "enter a setup key" and type this key (or paste the link below into an app that accepts it):</p>
+      <div class="totp-key" id="totp-key"></div>
+      <div class="btn-row"><button type="button" class="btn small" id="btn-totp-copy-key" data-i18n="totp.copyKey">Copy key</button><button type="button" class="btn small" id="btn-totp-copy-uri" data-i18n="totp.copyLink">Copy link</button></div>
+      <label><span data-i18n="totp.code">Code</span><input name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123 456"></label>
+      <p class="sub" data-i18n="totp.confirmHint">Type the code the app shows now. The second factor is only switched on once a code matches.</p>
+    </div>
+    <div id="totp-off" class="hidden">
+      <p class="sub" data-i18n="totp.offHint">Turn the second factor off: from then on the PIN or password alone unlocks Veranda.</p>
+      <label><span data-i18n="lock.current">Current</span><input name="current_off" type="password" autocomplete="current-password"></label>
+    </div>
+    <div class="actions-row">
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close="dlg-totp" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" id="btn-totp-next" data-i18n="btn.next">Next</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="dlg-group-svc">
+  <form method="dialog" id="form-group-svc">
+    <h2 data-i18n="groups.title">Startup group</h2>
+    <input type="hidden" name="orig">
+    <label><span data-i18n="rm.name">Name</span><input name="name" required placeholder="Laravel stack"></label>
+    <p class="sub" data-i18n="groups.hint">Pick the services and their start order; they stop in reverse order.</p>
+    <div class="host-picker" id="group-svc-list"></div>
+    <label class="check"><input type="checkbox" name="default"><span data-i18n="groups.default">Start this group on launch</span></label>
+    <div class="actions-row">
+      <button type="button" class="btn danger hidden" id="btn-group-svc-delete" data-i18n="btn.remove">Remove</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close="dlg-group-svc" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-close">
+  <form method="dialog" id="form-close">
+    <h2 data-i18n="close.title">Close Veranda?</h2>
+    <p class="sub" data-i18n="close.text">Hide to the tray and keep your sites running, or stop everything and quit.</p>
+    <label class="check"><input type="checkbox" name="remember"><span data-i18n="close.remember">Remember my choice (changeable in Settings)</span></label>
+    <div class="actions-row">
+      <button type="button" class="btn" id="btn-close-quit" data-i18n="close.quit">Quit</button>
+      <button type="button" class="btn primary" id="btn-close-tray" data-i18n="close.tray">Hide to tray</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-confirm">
+  <form method="dialog">
+    <h2 id="confirm-title" data-i18n="confirm.title">Are you sure?</h2>
+    <p class="sub" id="confirm-text"></p>
+    <div class="actions-row">
+      <button type="button" class="btn" id="btn-confirm-cancel" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn danger" id="btn-confirm-ok" data-i18n="btn.remove">Remove</button>
+    </div>
+  </form>
+</dialog>
+
+
+<!-- ============ Remote dialogs ============ -->
+<dialog id="dlg-host" class="wide">
+  <form method="dialog" id="form-host">
+    <h2 id="host-dlg-title" data-i18n="rm.newHost">New host</h2>
+    <input type="hidden" name="id">
+    <div class="two">
+      <label><span data-i18n="rm.label">Label</span><input name="label" placeholder="My server"></label>
+      <label><span data-i18n="rm.group">Group</span><select name="group_id"></select></label>
+    </div>
+    <div class="two addr">
+      <label><span data-i18n="rm.address">Address</span><input name="address" placeholder="example.com" required autocomplete="off" spellcheck="false"></label>
+      <label><span data-i18n="rm.port">Port</span><input type="number" name="port" value="22" min="1" max="65535"></label>
+    </div>
+    <div class="two">
+      <label><span data-i18n="rm.username">Username</span><input name="username" placeholder="root" autocomplete="off" spellcheck="false"></label>
+      <label><span data-i18n="rm.auth">Auth</span><select name="auth">
+        <option value="password" data-i18n="rm.authPassword">Password</option>
+        <option value="key" data-i18n="rm.authKey">Key</option>
+        <option value="identity" data-i18n="rm.authIdentity">Identity</option>
+        <option value="agent" data-i18n="rm.authAgent">SSH agent</option>
+        <option value="none" data-i18n="rm.authNone">Ask when connecting</option>
+      </select></label>
+    </div>
+    <label data-auth="password"><span data-i18n="db.password">Password</span><input type="password" name="password" autocomplete="new-password" placeholder="••••••••"><button type="button" class="btn small" id="btn-host-clear-pw" data-i18n="rm.clearPassword">Clear</button></label>
+    <label data-auth="key"><span data-i18n="rm.key">Key</span><select name="key_id"></select></label>
+    <label data-auth="identity"><span data-i18n="rm.identity">Identity</span><select name="identity_id"></select></label>
+    <div class="two">
+      <label><span data-i18n="rm.jump">Jump host</span><select name="jump_host_id"></select></label>
+      <label><span data-i18n="rm.startup">Startup snippet</span><select name="startup_snippet_id"></select></label>
+    </div>
+    <div class="two">
+      <label><span data-i18n="rm.tags">Tags</span><input name="tags" placeholder="prod, web"></label>
+      <label><span data-i18n="rm.color">Colour</span><div class="swatches" id="host-colors"></div><input type="hidden" name="color"></label>
+    </div>
+    <label><span data-i18n="rm.env">Environment</span><input name="env" placeholder="LANG=en_US.UTF-8, LC_ALL=C" spellcheck="false"></label>
+    <label><span data-i18n="rm.notes">Notes</span><textarea name="notes" rows="2"></textarea></label>
+    <div class="radio-row">
+      <label class="check"><input type="checkbox" name="keep_alive" checked><span data-i18n="rm.keepAlive">Keep alive</span></label>
+      <label class="check"><input type="checkbox" name="agent_forwarding"><span data-i18n="rm.agentForwarding">Agent forwarding</span></label>
+    </div>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-host" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-group">
+  <form method="dialog" id="form-group">
+    <h2 data-i18n="rm.newGroup">New group</h2>
+    <input type="hidden" name="id">
+    <label><span data-i18n="rm.name">Name</span><input name="name" required></label>
+    <label><span data-i18n="rm.parent">Parent</span><select name="parent_id"></select></label>
+    <label><span data-i18n="rm.identity">Identity</span><select name="identity_id"></select></label>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-group" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-identity">
+  <form method="dialog" id="form-identity">
+    <h2 data-i18n="rm.newIdentity">New identity</h2>
+    <input type="hidden" name="id">
+    <label><span data-i18n="rm.label">Label</span><input name="label" placeholder="deploy user"></label>
+    <label><span data-i18n="rm.username">Username</span><input name="username" required autocomplete="off" spellcheck="false"></label>
+    <label><span data-i18n="db.password">Password</span><input type="password" name="password" autocomplete="new-password" placeholder="••••••••"></label>
+    <label><span data-i18n="rm.key">Key</span><select name="key_id"></select></label>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-identity" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-key">
+  <form method="dialog" id="form-key">
+    <h2 id="key-dlg-title" data-i18n="rm.newKey">New key</h2>
+    <input type="hidden" name="mode" value="generate">
+    <label><span data-i18n="rm.label">Label</span><input name="label" placeholder="laptop key"></label>
+    <label data-key="generate"><span data-i18n="rm.keyType">Type</span><select name="kind"><option value="ed25519">Ed25519 (recommended)</option><option value="rsa">RSA 4096</option><option value="ecdsa">ECDSA P-256</option></select></label>
+    <div data-key="import">
+      <label><span data-i18n="rm.keyFile">File</span><select name="path"></select><button type="button" class="btn small" id="btn-key-browse" data-i18n="btn.browse">Browse</button></label>
+      <label><span data-i18n="rm.keyPaste">Or paste</span><textarea name="text" rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" spellcheck="false"></textarea></label>
+    </div>
+    <label><span data-i18n="rm.passphrase">Passphrase</span><input type="password" name="passphrase" autocomplete="new-password"></label>
+    <label class="check"><input type="checkbox" name="save_passphrase" checked><span data-i18n="rm.savePassphrase">Remember the passphrase</span></label>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-key" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-snippet" class="wide">
+  <form method="dialog" id="form-snippet">
+    <h2 data-i18n="rm.newSnippet">New snippet</h2>
+    <input type="hidden" name="id">
+    <div class="two">
+      <label><span data-i18n="rm.name">Name</span><input name="label" required></label>
+      <label><span data-i18n="rm.folder">Folder</span><input name="folder" placeholder="Maintenance"></label>
+    </div>
+    <label class="block"><span data-i18n="rm.script">Script</span><textarea name="script" rows="7" spellcheck="false" placeholder="sudo apt update && sudo apt upgrade -y"></textarea></label>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-snippet" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-snip-lock">
+  <form method="dialog" id="form-snip-lock">
+    <h2 id="snip-lock-title" data-i18n="rm.setPassword">Set password</h2>
+    <p class="sub" data-i18n="rm.lockTip">Snippet contents are encrypted on disk and the Snippets page and panel stay locked until you enter the password. Nobody looking at your screen sees what is inside.</p>
+    <label data-lock="on"><span data-i18n="rm.currentPassword">Current</span><input type="password" name="current" autocomplete="current-password"></label>
+    <label><span data-i18n="rm.newPassword">New password</span><input type="password" name="new" minlength="6" autocomplete="new-password" required></label>
+    <label><span data-i18n="rm.confirmPassword">Confirm</span><input type="password" name="confirm" minlength="6" autocomplete="new-password" required></label>
+    <label><span data-i18n="rm.autoLock">Lock again</span><select name="minutes"><option value="5">5</option><option value="15">15</option><option value="30">30</option><option value="60">60</option><option value="0">0</option></select></label>
+    <div class="actions-row">
+      <button type="button" class="btn danger hidden" id="btn-snip-pass-remove" data-i18n="rm.removePassword">Remove password</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close="dlg-snip-lock" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-run-snippet">
+  <form method="dialog" id="form-run-snippet">
+    <h2 id="run-snippet-title" data-i18n="rm.runOnHosts">Run on hosts</h2>
+    <div class="host-picker" id="run-snippet-hosts"></div>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-run-snippet" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="rm.run">Run</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-forward">
+  <form method="dialog" id="form-forward">
+    <h2 data-i18n="rm.newRule">New rule</h2>
+    <input type="hidden" name="id">
+    <label><span data-i18n="rm.label">Label</span><input name="label" placeholder="Database"></label>
+    <label><span data-i18n="rm.kind">Type</span><select name="kind"><option value="local" data-i18n="rm.fwdLocal">Local</option><option value="remote" data-i18n="rm.fwdRemote">Remote</option><option value="dynamic" data-i18n="rm.fwdDynamic">Dynamic (SOCKS5)</option></select></label>
+    <label><span data-i18n="rm.host">Host</span><select name="host_id"></select></label>
+    <div class="two">
+      <label><span data-i18n="rm.bindAddress">Bind</span><input name="bind_address" value="127.0.0.1"></label>
+      <label><span data-i18n="rm.bindPort">Port</span><input type="number" name="bind_port" min="0" max="65535" placeholder="8080"></label>
+    </div>
+    <div class="two" id="fwd-dest">
+      <label><span data-i18n="rm.destHost">To host</span><input name="dest_host" value="127.0.0.1"></label>
+      <label><span data-i18n="rm.destPort">Port</span><input type="number" name="dest_port" min="1" max="65535" placeholder="3306"></label>
+    </div>
+    <p class="sub" id="fwd-explain"></p>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-forward" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-prompt">
+  <form method="dialog" id="form-prompt">
+    <h2 id="prompt-title"></h2>
+    <p class="sub" id="prompt-text"></p>
+    <div class="fingerprint hidden" id="prompt-fp"></div>
+    <label id="prompt-input-row"><span id="prompt-label"></span><input name="value" autocomplete="off"></label>
+    <label class="check" id="prompt-remember-row"><input type="checkbox" name="remember"><span data-i18n="rm.remember">Remember</span></label>
+    <div class="actions-row">
+      <button type="button" class="btn" id="btn-prompt-cancel" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" id="btn-prompt-ok">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-term-settings" class="wide">
+  <form method="dialog" id="form-term-settings">
+    <h2 data-i18n="rm.terminalSettings">Terminal settings</h2>
+    <div class="two">
+      <label><span data-i18n="rm.font">Font</span><input name="font_family" placeholder="JetBrains Mono"></label>
+      <label><span data-i18n="rm.fontSize">Size</span><input type="number" name="font_size" min="8" max="32"></label>
+    </div>
+    <div class="two">
+      <label><span data-i18n="rm.theme">Theme</span><select name="theme"><option value="auto" data-i18n="rm.themeAuto">Follow Veranda</option><option value="dark">Dark</option><option value="light">Light</option><option value="onedark">One Dark</option><option value="tokyonight">Tokyo Night</option><option value="catppuccin">Catppuccin Mocha</option><option value="dracula">Dracula</option><option value="gruvbox">Gruvbox dark</option><option value="monokai">Monokai</option><option value="solarized">Solarized dark</option><option value="nord">Nord</option></select></label>
+      <label><span data-i18n="rm.cursor">Cursor</span><select name="cursor_style"><option value="block">Block</option><option value="underline">Underline</option><option value="bar">Bar</option></select></label>
+    </div>
+    <div class="two">
+      <label><span data-i18n="rm.scrollback">Scrollback</span><input type="number" name="scrollback" min="100" max="100000"></label>
+      <label><span data-i18n="rm.keepAliveEvery">Keep-alive (s)</span><input type="number" name="keepalive_secs" min="0" max="600"></label>
+    </div>
+    <label><span data-i18n="rm.localShell">Local shell</span><input name="local_shell" placeholder="(system default)" spellcheck="false"></label>
+    <div class="radio-row">
+      <label class="check"><input type="checkbox" name="cursor_blink"><span data-i18n="rm.cursorBlink">Blink</span></label>
+      <label class="check"><input type="checkbox" name="copy_on_select"><span data-i18n="rm.copyOnSelect">Copy on select</span></label>
+      <label class="check"><input type="checkbox" name="right_click_paste"><span data-i18n="rm.rightClickPaste">Right-click pastes</span></label>
+      <label class="check"><input type="checkbox" name="bell"><span data-i18n="rm.bell">Sound bell</span></label>
+      <label class="check"><input type="checkbox" id="term-stats-on"><span data-i18n="rm.statsShow">Server stats strip (CPU, RAM, disk)</span></label>
+      <label class="check"><input type="checkbox" name="confirm_close"><span data-i18n="rm.confirmClose">Confirm before closing a session</span></label>
+      <label class="check"><input type="checkbox" name="show_hidden"><span data-i18n="rm.showHidden">Show hidden files (SFTP)</span></label>
+    </div>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-term-settings" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-import" class="wide">
+  <form method="dialog" id="form-import">
+    <h2 data-i18n="rm.importTitle">Import hosts</h2>
+    <p class="sub" data-i18n="rm.importHint">Hosts from ~/.ssh/config and PuTTY. Keys named in IdentityFile are copied into the keychain.</p>
+    <div class="host-picker" id="import-list"></div>
+    <label class="check"><input type="checkbox" name="import_keys" checked><span data-i18n="rm.importKeys">Import private keys too</span></label>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-import" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="rm.import">Import</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-text">
+  <form method="dialog" id="form-text">
+    <h2 id="text-dlg-title"></h2>
+    <label><span id="text-dlg-label"></span><input name="value" autocomplete="off" spellcheck="false"></label>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-text" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-editor" class="wide">
+  <form method="dialog" id="form-editor">
+    <h2 id="editor-title"></h2>
+    <textarea name="text" rows="18" spellcheck="false" class="editor"></textarea>
+    <div class="actions-row">
+      <button type="button" class="btn" data-close="dlg-editor" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toasts"></div>
+<script src="i18n.js"></script>
+<script src="icons.js"></script>
+<script src="brands.js"></script>
+<script src="vendor/xterm/xterm.js"></script>
+<script src="vendor/xterm/addon-fit.js"></script>
+<script src="vendor/xterm/addon-web-links.js"></script>
+<script src="vendor/xterm/addon-search.js"></script>
+<script src="vendor/xterm/addon-unicode11.js"></script>
+<script src="app.js"></script>
+<script src="editor.js"></script>
+<script src="remote.js"></script>
+</body>
+</html>

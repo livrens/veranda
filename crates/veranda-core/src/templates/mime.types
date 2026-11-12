@@ -1,0 +1,9 @@
+types {
+    text/html html htm shtml; text/css css; text/xml xml; text/plain txt; text/javascript js mjs;
+    image/gif gif; image/jpeg jpeg jpg; image/png png; image/svg+xml svg svgz; image/webp webp; image/avif avif; image/x-icon ico; image/bmp bmp;
+    application/json json; application/xml rss atom; application/javascript jsx; application/wasm wasm; application/pdf pdf; application/zip zip;
+    application/x-tar tar; application/gzip gz; application/octet-stream bin exe dll deb dmg iso img msi;
+    font/woff woff; font/woff2 woff2; font/ttf ttf; font/otf otf;
+    audio/mpeg mp3; audio/ogg ogg; video/mp4 mp4; video/webm webm;
+    application/manifest+json webmanifest; text/markdown md;
+}

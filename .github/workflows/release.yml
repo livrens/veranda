@@ -1,0 +1,155 @@
+name: Release
+
+# Trigger: push a tag like v0.1.0 (must match "version" in apps/desktop/src-tauri/tauri.conf.json).
+# Produces: .deb/.rpm/.AppImage (Linux), .exe/.msi (Windows), .dmg/.app (macOS universal),
+# signed updater artifacts + latest.json, and the CLI binaries, attached to a DRAFT release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # One draft release per tag, created before the builds start. The three desktop builds used to
+  # race for it and could end up creating two releases for the same tag.
+  release:
+    name: create draft release
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.create.outputs.result }}
+    steps:
+      - uses: actions/github-script@v7
+        id: create
+        with:
+          result-encoding: string
+          script: |
+            if (!context.ref.startsWith('refs/tags/')) throw new Error('run this workflow from a tag');
+            const tag = context.ref.replace('refs/tags/', '');
+            const { owner, repo } = context.repo;
+            const existing = await github.rest.repos.listReleases({ owner, repo, per_page: 50 });
+            const found = existing.data.find((r) => r.tag_name === tag);
+            if (found) return String(found.id);
+            const { data } = await github.rest.repos.createRelease({
+              owner, repo, tag_name: tag, name: `Veranda ${tag}`,
+              body: 'See CHANGELOG.md for details.', draft: true, prerelease: false,
+            });
+            return String(data.id);
+
+  desktop:
+    name: desktop (${{ matrix.name }})
+    needs: release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            args: ""
+          - name: windows-x86_64
+            os: windows-latest
+            args: ""
+          - name: macos-universal
+            os: macos-latest
+            args: "--target universal-apple-darwin"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf libfuse2
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+      # Code signing is optional and switched on by secrets (see docs/SIGNING.md). Without them
+      # the installers are built unsigned, exactly as before.
+      - name: macOS signing and notarization secrets
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ]; then
+            {
+              echo "APPLE_CERTIFICATE=${{ secrets.APPLE_CERTIFICATE }}"
+              echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.APPLE_CERTIFICATE_PASSWORD }}"
+              echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}"
+              echo "APPLE_ID=${{ secrets.APPLE_ID }}"
+              echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}"
+              echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
+            } >> "$GITHUB_ENV"
+            echo "macOS signing enabled"
+          else
+            echo "macOS signing not configured (unsigned build)"
+          fi
+      - name: Windows code-signing certificate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $pfx = "${{ secrets.WINDOWS_CERTIFICATE }}"
+          if ($pfx) {
+            $path = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+            [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($pfx))
+            $pw = ConvertTo-SecureString "${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}" -AsPlainText -Force
+            $cert = Import-PfxCertificate -FilePath $path -CertStoreLocation Cert:\CurrentUser\My -Password $pw
+            Remove-Item $path
+            $cfg = @{ bundle = @{ windows = @{ certificateThumbprint = $cert.Thumbprint; digestAlgorithm = "sha256"; timestampUrl = "http://timestamp.digicert.com" } } } | ConvertTo-Json -Depth 5
+            $cfgPath = Join-Path $env:RUNNER_TEMP "win-sign.json"
+            Set-Content -Path $cfgPath -Value $cfg
+            "WIN_SIGN_ARGS=--config $cfgPath" >> $env:GITHUB_ENV
+            "Windows signing enabled"
+          } else {
+            "Windows signing not configured (unsigned build)"
+          }
+      - name: Build, sign and upload installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # linuxdeploy's strip step fails on some binaries ("failed to run linuxdeploy"); the
+          # release profile already strips, so skip it in the AppImage bundler.
+          NO_STRIP: "true"
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: cargo tauri
+          releaseId: ${{ needs.release.outputs.id }}
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: ${{ matrix.args }} ${{ env.WIN_SIGN_ARGS }}
+
+  cli:
+    name: cli (${{ matrix.name }})
+    needs: [release, desktop]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64, os: ubuntu-22.04, bin: veranda, ext: "" }
+          - { name: windows-x86_64, os: windows-latest, bin: veranda.exe, ext: ".exe" }
+          - { name: macos-arm64, os: macos-latest, bin: veranda, ext: "" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p veranda-cli
+      - shell: bash
+        run: |
+          mkdir -p dist
+          cp target/release/${{ matrix.bin }} "dist/veranda-cli-${{ matrix.name }}${{ matrix.ext }}"
+          cd dist && sha256sum * > "veranda-cli-${{ matrix.name }}.sha256"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          files: dist/*

@@ -1,0 +1,72 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/veranda-core",
+    "crates/veranda-remote",
+    "apps/cli",
+    "apps/desktop/src-tauri",
+]
+default-members = ["crates/veranda-core", "apps/cli"]
+
+[workspace.package]
+version = "1.0.9"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+repository = ""
+authors = ["Veranda contributors"]
+
+[workspace.dependencies]
+veranda-core = { path = "crates/veranda-core" }
+veranda-remote = { path = "crates/veranda-remote" }
+anyhow = "1.0.104"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+toml = "1.1.8"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "process", "fs", "io-util", "time", "sync", "net"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "json", "http2", "charset"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+zip = { version = "9.1.3", default-features = false, features = ["deflate", "deflate64", "time"] }
+tar = "0.4.46"
+flate2 = "1.1.10"
+liblzma = "0.4.9"
+sha2 = "0.11.1"
+md-5 = "0.11.0"
+hex = "0.4.3"
+data-encoding = "2.11"
+rcgen = "0.14.10"
+rand = "0.10.3"
+sysinfo = { version = "0.40.1", default-features = false, features = ["system"] }
+dirs = "7.0.0"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+clap = { version = "4.6.7", features = ["derive"] }
+time = { version = "0.3.55", features = ["formatting", "macros", "serde"] }
+semver = "1.0.28"
+regex = "1.13.1"
+which = "8.0.6"
+tempfile = "3.27.0"
+# Remote (SSH/SFTP/terminal) stack: pure Rust, ring crypto (shared with rustls).
+russh = { version = "0.65.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh-sftp = "3.0.1"
+portable-pty = "0.9.0"
+keyring = "4.2.0"
+base64 = "0.23.1"
+ring = "0.17.14"
+minisign-verify = "0.3.0"
+
+# Dev builds without dependency debuginfo: the same binaries for testing, a fraction of the
+# disk (full debuginfo once pushed target/ past 70 GB). Workspace crates keep line tables so
+# panics and backtraces still name the line.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

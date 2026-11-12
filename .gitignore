@@ -1,0 +1,22 @@
+/target
+**/target
+/apps/desktop/src-tauri/gen
+/apps/desktop/src-tauri/target
+node_modules
+*.log
+.DS_Store
+Thumbs.db
+# never commit secrets or runtime data
+/runtime
+*.key
+*.pfx
+*.p12
+secrets/
+
+# codegraph index (local)
+.codegraph/
+# AI tooling / local indexes (never commit)
+.claude/
+CLAUDE.md
+.cursor/
+.aider*

@@ -1,0 +1,422 @@
+# Built-in package manifest. Versions and checksums verified on 2026-10-31.
+# Every URL must be https. `resolve` can discover newer versions at run time.
+#
+# checksum.algo: sha256 | sha512 | md5 | remote (url+name of a checksum file) | tofu
+# tofu = no upstream checksum exists; hash is recorded on first download and
+#        any later change for the same URL is refused.
+
+# ---------------------------------------------------------------- PHP (Windows, official NTS builds)
+[[packages]]
+kind = "php"
+version = "8.5.12-1"
+os = "windows"
+arch = "x86_64"
+source = "php.net"
+parts = [{ url = "https://downloads.php.net/~windows/releases/php-8.5.12-1-nts-Win32-vs17-x64.zip", archive = "zip", checksum = { algo = "sha256", hex = "2a36a2edcb7a5b9252f638fd5e4cf84d7f6e066092654220dc0b63e5cf4e9723" } }]
+
+[[packages]]
+kind = "php"
+version = "8.4.27-1"
+os = "windows"
+arch = "x86_64"
+source = "php.net"
+parts = [{ url = "https://downloads.php.net/~windows/releases/php-8.4.27-1-nts-Win32-vs17-x64.zip", archive = "zip", checksum = { algo = "sha256", hex = "dbae154a0a89791f36c3d48e68bae797878333e7d6cb5721e74617de59b63ab7" } }]
+
+[[packages]]
+kind = "php"
+version = "8.3.36-1"
+os = "windows"
+arch = "x86_64"
+source = "php.net"
+parts = [{ url = "https://downloads.php.net/~windows/releases/php-8.3.36-1-nts-Win32-vs16-x64.zip", archive = "zip", checksum = { algo = "sha256", hex = "1a097d52b7a68622cdc723073b61cc70caf79c941218ff65b2d8441dbc6b10d4" } }]
+
+# ---------------------------------------------------------------- PHP (Linux / macOS, static-php-cli "bulk" builds: cli + fpm)
+# The bulk bundle adds mysqli, intl, imagick, apcu, sodium, xsl, swoole... over "common"; phpMyAdmin
+# needs mysqli and most frameworks need intl.
+[[packages]]
+kind = "php"
+version = "8.5.8"
+os = "linux"
+arch = "x86_64"
+source = "static-php.dev"
+parts = [
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.5.8-cli-linux-x86_64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.5.8-fpm-linux-x86_64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+]
+
+[[packages]]
+kind = "php"
+version = "8.5.8"
+os = "linux"
+arch = "aarch64"
+source = "static-php.dev"
+parts = [
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.5.8-cli-linux-aarch64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.5.8-fpm-linux-aarch64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+]
+
+[[packages]]
+kind = "php"
+version = "8.5.8"
+os = "macos"
+arch = "aarch64"
+source = "static-php.dev"
+parts = [
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.5.8-cli-macos-aarch64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.5.8-fpm-macos-aarch64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+]
+
+[[packages]]
+kind = "php"
+version = "8.5.8"
+os = "macos"
+arch = "x86_64"
+source = "static-php.dev"
+parts = [
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.5.8-cli-macos-x86_64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.5.8-fpm-macos-x86_64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+]
+
+[[packages]]
+kind = "php"
+version = "8.4.23"
+os = "linux"
+arch = "x86_64"
+source = "static-php.dev"
+parts = [
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.4.23-cli-linux-x86_64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.4.23-fpm-linux-x86_64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+]
+
+[[packages]]
+kind = "php"
+version = "8.4.23"
+os = "macos"
+arch = "aarch64"
+source = "static-php.dev"
+parts = [
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.4.23-cli-macos-aarch64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+  { url = "https://dl.static-php.dev/static-php-cli/bulk/php-8.4.23-fpm-macos-aarch64.tar.gz", archive = "targz", checksum = { algo = "tofu" } },
+]
+
+# ---------------------------------------------------------------- Caddy (default web server, all platforms)
+[[packages]]
+kind = "nginx"
+version = "1.30.6"
+os = "windows"
+arch = "x86_64"
+source = "nginx.org"
+notes = "stable branch; nginx.org publishes PGP signatures only"
+parts = [{ url = "https://nginx.org/download/nginx-1.30.6.zip", archive = "zip", checksum = { algo = "tofu" }, strip = 1 }]
+
+[[packages]]
+kind = "apache"
+version = "2.4.69-261002"
+os = "windows"
+arch = "x86_64"
+source = "apachelounge.com"
+parts = [{ url = "https://www.apachelounge.com/download/VS18/binaries/httpd-2.4.69-261002-Win64-VS18.zip", archive = "zip", checksum = { algo = "remote", url = "https://www.apachelounge.com/download/VS18/binaries/httpd-2.4.69-261002-Win64-VS18.zip.txt", name = "httpd-2.4.69-261002-Win64-VS18.zip" }, strip = 1 }]
+
+# ---------------------------------------------------------------- MariaDB (default database)
+[[packages]]
+kind = "mariadb"
+version = "13.0.2"
+os = "linux"
+arch = "x86_64"
+source = "mariadb.org"
+parts = [{ url = "https://downloads.mariadb.org/rest-api/mariadb/13.0.2/mariadb-13.0.2-linux-systemd-x86_64.tar.gz", archive = "targz", checksum = { algo = "sha256", hex = "e1b15581cfb2441fb7f3df2cc559998980406999e4c4a150ca303289f58b673c" }, strip = 1 }]
+
+[[packages]]
+kind = "mariadb"
+version = "13.0.2"
+os = "windows"
+arch = "x86_64"
+source = "mariadb.org"
+parts = [{ url = "https://downloads.mariadb.org/rest-api/mariadb/13.0.2/mariadb-13.0.2-winx64.zip", archive = "zip", checksum = { algo = "sha256", hex = "ba9cefd6674b3f2f7bc67334c05305dc7c919643d76836e10767e70db0b5fb74" }, strip = 1 }]
+
+# ---------------------------------------------------------------- MySQL (official CDN; MySQL only publishes MD5 + PGP)
+[[packages]]
+kind = "mysql"
+version = "9.7.4"
+os = "linux"
+arch = "x86_64"
+source = "mysql.com"
+parts = [{ url = "https://cdn.mysql.com/Downloads/MySQL-9.7/mysql-9.7.4-linux-glibc2.28-x86_64.tar.xz", archive = "tarxz", checksum = { algo = "md5", hex = "dbc4f76f6bedab22a136af9ed846b2cf" }, strip = 1 }]
+
+[[packages]]
+kind = "mysql"
+version = "9.7.4"
+os = "linux"
+arch = "aarch64"
+source = "mysql.com"
+parts = [{ url = "https://cdn.mysql.com/Downloads/MySQL-9.7/mysql-9.7.4-linux-glibc2.28-aarch64.tar.xz", archive = "tarxz", checksum = { algo = "md5", hex = "6c1ede742c21d4a4a74cc96b66a543e5" }, strip = 1 }]
+
+[[packages]]
+kind = "mysql"
+version = "9.7.4"
+os = "macos"
+arch = "aarch64"
+source = "mysql.com"
+parts = [{ url = "https://cdn.mysql.com/Downloads/MySQL-9.7/mysql-9.7.4-macos15-arm64.tar.gz", archive = "targz", checksum = { algo = "md5", hex = "221b1e720d1852c5f1f7367957b50574" }, strip = 1 }]
+
+[[packages]]
+kind = "mysql"
+version = "9.7.4"
+os = "macos"
+arch = "x86_64"
+source = "mysql.com"
+parts = [{ url = "https://cdn.mysql.com/Downloads/MySQL-9.7/mysql-9.7.4-macos15-x86_64.tar.gz", archive = "targz", checksum = { algo = "md5", hex = "9e4d8881ac40b564f8aa7dbd3ec88a05" }, strip = 1 }]
+
+[[packages]]
+kind = "mysql"
+version = "9.7.4"
+os = "windows"
+arch = "x86_64"
+source = "mysql.com"
+parts = [{ url = "https://cdn.mysql.com/Downloads/MySQL-9.7/mysql-9.7.4-winx64.zip", archive = "zip", checksum = { algo = "md5", hex = "e05aaa40639d8548e0f68b7a70685a3b" }, strip = 1 }]
+
+# ---------------------------------------------------------------- Cache: Valkey (Linux), Redis for Windows (Windows). macOS: brew install valkey
+[[packages]]
+kind = "node"
+version = "26.13.0"
+os = "linux"
+arch = "x86_64"
+source = "nodejs.org"
+parts = [{ url = "https://nodejs.org/dist/v26.13.0/node-v26.13.0-linux-x64.tar.xz", archive = "tarxz", checksum = { algo = "remote", url = "https://nodejs.org/dist/v26.13.0/SHASUMS256.txt", name = "node-v26.13.0-linux-x64.tar.xz" }, strip = 1 }]
+
+[[packages]]
+kind = "node"
+version = "26.13.0"
+os = "linux"
+arch = "aarch64"
+source = "nodejs.org"
+parts = [{ url = "https://nodejs.org/dist/v26.13.0/node-v26.13.0-linux-arm64.tar.xz", archive = "tarxz", checksum = { algo = "remote", url = "https://nodejs.org/dist/v26.13.0/SHASUMS256.txt", name = "node-v26.13.0-linux-arm64.tar.xz" }, strip = 1 }]
+
+[[packages]]
+kind = "node"
+version = "26.13.0"
+os = "macos"
+arch = "aarch64"
+source = "nodejs.org"
+parts = [{ url = "https://nodejs.org/dist/v26.13.0/node-v26.13.0-darwin-arm64.tar.gz", archive = "targz", checksum = { algo = "remote", url = "https://nodejs.org/dist/v26.13.0/SHASUMS256.txt", name = "node-v26.13.0-darwin-arm64.tar.gz" }, strip = 1 }]
+
+[[packages]]
+kind = "node"
+version = "26.13.0"
+os = "macos"
+arch = "x86_64"
+source = "nodejs.org"
+parts = [{ url = "https://nodejs.org/dist/v26.13.0/node-v26.13.0-darwin-x64.tar.gz", archive = "targz", checksum = { algo = "remote", url = "https://nodejs.org/dist/v26.13.0/SHASUMS256.txt", name = "node-v26.13.0-darwin-x64.tar.gz" }, strip = 1 }]
+
+[[packages]]
+kind = "node"
+version = "26.13.0"
+os = "windows"
+arch = "x86_64"
+source = "nodejs.org"
+parts = [{ url = "https://nodejs.org/dist/v26.13.0/node-v26.13.0-win-x64.zip", archive = "zip", checksum = { algo = "remote", url = "https://nodejs.org/dist/v26.13.0/SHASUMS256.txt", name = "node-v26.13.0-win-x64.zip" }, strip = 1 }]
+
+# ---------------------------------------------------------------- Composer, Adminer, phpMyAdmin, CA bundle (platform independent; listed per platform)
+[[packages]]
+kind = "adminer"
+version = "6.2.0"
+os = "linux"
+arch = "x86_64"
+source = "github"
+parts = [{ url = "https://github.com/vrana/adminer/releases/download/v6.2.0/adminer-6.2.0.php", archive = "file", file_name = "index.php", checksum = { algo = "sha256", hex = "9047c00dfc8258c6046c6720d7d201eaa0ca016fa0fc554bf0c4c137306e1c16" } }]
+
+[[packages]]
+kind = "adminer"
+version = "6.2.0"
+os = "linux"
+arch = "aarch64"
+source = "github"
+parts = [{ url = "https://github.com/vrana/adminer/releases/download/v6.2.0/adminer-6.2.0.php", archive = "file", file_name = "index.php", checksum = { algo = "sha256", hex = "9047c00dfc8258c6046c6720d7d201eaa0ca016fa0fc554bf0c4c137306e1c16" } }]
+
+[[packages]]
+kind = "adminer"
+version = "6.2.0"
+os = "macos"
+arch = "aarch64"
+source = "github"
+parts = [{ url = "https://github.com/vrana/adminer/releases/download/v6.2.0/adminer-6.2.0.php", archive = "file", file_name = "index.php", checksum = { algo = "sha256", hex = "9047c00dfc8258c6046c6720d7d201eaa0ca016fa0fc554bf0c4c137306e1c16" } }]
+
+[[packages]]
+kind = "adminer"
+version = "6.2.0"
+os = "macos"
+arch = "x86_64"
+source = "github"
+parts = [{ url = "https://github.com/vrana/adminer/releases/download/v6.2.0/adminer-6.2.0.php", archive = "file", file_name = "index.php", checksum = { algo = "sha256", hex = "9047c00dfc8258c6046c6720d7d201eaa0ca016fa0fc554bf0c4c137306e1c16" } }]
+
+[[packages]]
+kind = "adminer"
+version = "6.2.0"
+os = "windows"
+arch = "x86_64"
+source = "github"
+parts = [{ url = "https://github.com/vrana/adminer/releases/download/v6.2.0/adminer-6.2.0.php", archive = "file", file_name = "index.php", checksum = { algo = "sha256", hex = "9047c00dfc8258c6046c6720d7d201eaa0ca016fa0fc554bf0c4c137306e1c16" } }]
+
+[[packages]]
+kind = "phpmyadmin"
+version = "5.2.3"
+os = "linux"
+arch = "x86_64"
+source = "phpmyadmin.net"
+parts = [{ url = "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip", archive = "zip", checksum = { algo = "sha256", hex = "2d2e13c735366d318425c78e4ee2cc8fc648d77faba3ddea2cd516e43885733f" }, strip = 1 }]
+
+[[packages]]
+kind = "phpmyadmin"
+version = "5.2.3"
+os = "linux"
+arch = "aarch64"
+source = "phpmyadmin.net"
+parts = [{ url = "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip", archive = "zip", checksum = { algo = "sha256", hex = "2d2e13c735366d318425c78e4ee2cc8fc648d77faba3ddea2cd516e43885733f" }, strip = 1 }]
+
+[[packages]]
+kind = "phpmyadmin"
+version = "5.2.3"
+os = "macos"
+arch = "aarch64"
+source = "phpmyadmin.net"
+parts = [{ url = "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip", archive = "zip", checksum = { algo = "sha256", hex = "2d2e13c735366d318425c78e4ee2cc8fc648d77faba3ddea2cd516e43885733f" }, strip = 1 }]
+
+[[packages]]
+kind = "phpmyadmin"
+version = "5.2.3"
+os = "macos"
+arch = "x86_64"
+source = "phpmyadmin.net"
+parts = [{ url = "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip", archive = "zip", checksum = { algo = "sha256", hex = "2d2e13c735366d318425c78e4ee2cc8fc648d77faba3ddea2cd516e43885733f" }, strip = 1 }]
+
+[[packages]]
+kind = "phpmyadmin"
+version = "5.2.3"
+os = "windows"
+arch = "x86_64"
+source = "phpmyadmin.net"
+parts = [{ url = "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip", archive = "zip", checksum = { algo = "sha256", hex = "2d2e13c735366d318425c78e4ee2cc8fc648d77faba3ddea2cd516e43885733f" }, strip = 1 }]
+
+[[packages]]
+kind = "postgres"
+version = "18.6.0"
+os = "linux"
+arch = "x86_64"
+source = "zonky.io / maven central"
+parts = [{ url = "https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-linux-amd64/18.6.0/embedded-postgres-binaries-linux-amd64-18.6.0.jar", archive = "zip", checksum = { algo = "sha256", hex = "008ee189eaa7ca2b58bd01dd950291e638b998392cf982297acd4779ec898ac1" } }]
+
+[[packages]]
+kind = "postgres"
+version = "18.6.0"
+os = "linux"
+arch = "aarch64"
+source = "zonky.io / maven central"
+parts = [{ url = "https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-linux-arm64v8/18.6.0/embedded-postgres-binaries-linux-arm64v8-18.6.0.jar", archive = "zip", checksum = { algo = "sha256", hex = "5f54e016723afa6213925a8acb939bac52944b1d348f65c7a20f0cd2928c31be" } }]
+
+[[packages]]
+kind = "postgres"
+version = "18.6.0"
+os = "macos"
+arch = "x86_64"
+source = "zonky.io / maven central"
+parts = [{ url = "https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-darwin-amd64/18.6.0/embedded-postgres-binaries-darwin-amd64-18.6.0.jar", archive = "zip", checksum = { algo = "sha256", hex = "690941008aac9ee360820fde9bb7870a4f3dcac5e9e2f9e45e42333a436ad0f9" } }]
+
+[[packages]]
+kind = "postgres"
+version = "18.6.0"
+os = "macos"
+arch = "aarch64"
+source = "zonky.io / maven central"
+parts = [{ url = "https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-darwin-arm64v8/18.6.0/embedded-postgres-binaries-darwin-arm64v8-18.6.0.jar", archive = "zip", checksum = { algo = "sha256", hex = "8f6ed6f38195b50a40712ada8b2a12060b6193c1a6977a6eb5cff053bb5a1b89" } }]
+
+[[packages]]
+kind = "postgres"
+version = "18.6.0"
+os = "windows"
+arch = "x86_64"
+source = "zonky.io / maven central"
+parts = [{ url = "https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-windows-amd64/18.6.0/embedded-postgres-binaries-windows-amd64-18.6.0.jar", archive = "zip", checksum = { algo = "sha256", hex = "b7ef2d03588e0439f0d0a2250f43905f7464f1e96ace47703ceaf79094198150" } }]
+
+# ---------------------------------------------------------------- Python (python-build-standalone, install_only_stripped)
+[[packages]]
+kind = "python"
+version = "3.14.10"
+os = "linux"
+arch = "x86_64"
+source = "python-build-standalone"
+parts = [{ url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz", archive = "targz", strip = 1, checksum = { algo = "sha256", hex = "4d3c16c59ed0802a3d1d34d8bce504b15ceeaff39d62dadecc6a9fa803412aed" } }]
+
+[[packages]]
+kind = "python"
+version = "3.14.10"
+os = "linux"
+arch = "aarch64"
+source = "python-build-standalone"
+parts = [{ url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz", archive = "targz", strip = 1, checksum = { algo = "sha256", hex = "90f48337bc3dd4ae6eda81e001e4c981236d403b6b5a07778bbdf94ee423dc00" } }]
+
+[[packages]]
+kind = "python"
+version = "3.14.10"
+os = "macos"
+arch = "x86_64"
+source = "python-build-standalone"
+parts = [{ url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-x86_64-apple-darwin-install_only_stripped.tar.gz", archive = "targz", strip = 1, checksum = { algo = "sha256", hex = "2fd8becd48cf0ff5f0a15df3c0db7cae7aa708dcaacf901bd30d6cdd6229370b" } }]
+
+[[packages]]
+kind = "python"
+version = "3.14.10"
+os = "macos"
+arch = "aarch64"
+source = "python-build-standalone"
+parts = [{ url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-aarch64-apple-darwin-install_only_stripped.tar.gz", archive = "targz", strip = 1, checksum = { algo = "sha256", hex = "95eb8c87d16af37c54e9765e31d8c56c0d8ffa9968ea0f704f73a9b83f84e9f9" } }]
+
+[[packages]]
+kind = "python"
+version = "3.14.10"
+os = "windows"
+arch = "x86_64"
+source = "python-build-standalone"
+parts = [{ url = "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.14.10+20261026-x86_64-pc-windows-msvc-install_only_stripped.tar.gz", archive = "targz", strip = 1, checksum = { algo = "sha256", hex = "c1876a9795d3a94ee49a1499a69cd91e26ca3e2829593f93fa6e4db90d05402b" } }]
+
+# ---------------------------------------------------------------- Go (go.dev)
+[[packages]]
+kind = "mongodb"
+version = "9.0.4"
+os = "linux"
+arch = "x86_64"
+source = "mongodb.com"
+parts = [{ url = "https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2404-9.0.4.tgz", archive = "targz", strip = 1, checksum = { algo = "sha256", hex = "5e85bf685450287a1e7e073da3ae39677ffe7f00c01a86dec31283ccc2cf2dcc" } }]
+
+[[packages]]
+kind = "mongodb"
+version = "9.0.4"
+os = "linux"
+arch = "aarch64"
+source = "mongodb.com"
+parts = [{ url = "https://fastdl.mongodb.org/linux/mongodb-linux-aarch64-ubuntu2404-9.0.4.tgz", archive = "targz", strip = 1, checksum = { algo = "sha256", hex = "26ada71d5b6ec02f2975a261b3a321dc1f2a9f61cf29d4b41b4d12a22ebdb627" } }]
+
+[[packages]]
+kind = "mongodb"
+version = "9.0.4"
+os = "macos"
+arch = "aarch64"
+source = "mongodb.com"
+parts = [{ url = "https://downloads.mongodb.com/osx/mongodb-macos-arm64-enterprise-9.0.4.tgz", archive = "targz", strip = 1, checksum = { algo = "sha256", hex = "40543d05655087f096a58f5568aa4fc2318a64ad8ae57ce4a441071796634432" } }]
+
+[[packages]]
+kind = "mongodb"
+version = "9.0.4"
+os = "macos"
+arch = "x86_64"
+source = "mongodb.com"
+parts = [{ url = "https://fastdl.mongodb.org/osx/mongodb-macos-x86_64-9.0.4.tgz", archive = "targz", strip = 1, checksum = { algo = "sha256", hex = "cc7e5a17b9ccff0e1b2dab62858ad17bd519c87c4937fac89721bc4c6d326ef0" } }]
+
+[[packages]]
+kind = "mongodb"
+version = "9.0.4"
+os = "windows"
+arch = "x86_64"
+source = "mongodb.com"
+parts = [{ url = "https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-9.0.4.zip", archive = "zip", strip = 1, checksum = { algo = "sha256", hex = "1e6234c8c33e75de3659a7e1104cb12f1cb68ae41cba60b625537c1ed9256d43" } }]
+
+# ---------------------------------------------------------------- Meilisearch (single binary; GitHub asset digest)

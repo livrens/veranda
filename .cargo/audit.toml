@@ -1,0 +1,11 @@
+# cargo-audit settings (CI runs `cargo audit` on every push).
+[advisories]
+ignore = [
+    # RUSTSEC-2023-0071 "Marvin" timing side channel in the `rsa` crate. Pulled in by the SSH
+    # client (russh -> ssh-key -> rsa) for RSA user and host keys only; no fixed release exists
+    # (the advisory is open upstream). Impact for Veranda is low: the private key is used by a
+    # client to sign one challenge per login on the user's own machine, there is no network-facing
+    # RSA decryption oracle. Ed25519 is the default for generated keys. Reviewed 2026-11-05; drop
+    # this entry when the rsa crate ships a constant-time release.
+    "RUSTSEC-2023-0071",
+]

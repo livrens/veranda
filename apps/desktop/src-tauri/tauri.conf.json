@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Veranda",
+  "version": "1.0.9",
+  "identifier": "dev.veranda.desktop",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Veranda",
+        "label": "main",
+        "width": 800,
+        "height": 640,
+        "minWidth": 560,
+        "minHeight": 480,
+        "resizable": true,
+        "center": true,
+        "visible": false,
+        "backgroundColor": "#0f131b"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "Lightweight local web workbench: dev stack, SSH client, file editor",
+    "longDescription": "Veranda runs PHP, Caddy/Nginx/Apache, MariaDB/MySQL, Valkey and Mailpit locally with automatic virtual hosts and local HTTPS.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVEN0JDRUQ5MEE4QThFQjMKUldTempvb0syYzU3N1dzTUJZWmlMdnIyN0tHWHAxQ09hL002YWw3S3hCR3FUVjd3clB6OU9ZRWQK",
+      "endpoints": [
+        "https://github.com/OWNER/REPO/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
