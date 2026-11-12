@@ -10,6 +10,12 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 
 ## [Unreleased]
 
+## [1.0.12] - 2026-11-12
+
+### Changed
+- Terminal stats strip: CPU, RAM and disk figures match what `htop` and `df` report on the server;
+  load average, tasks, swap and per-core usage are shown as well, in a new tile layout.
+
 ## [1.0.11] - 2026-11-12
 
 ### Fixed
