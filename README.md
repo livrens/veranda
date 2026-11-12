@@ -56,30 +56,41 @@ only the parts you need; nothing is forced on you and nothing runs that you did 
   git keys, VS Code and Claude Code settings into one encrypted file; restore it on the new
   machine (any OS) and Veranda reinstalls the packages, clones your repositories and installs
   your extensions again.
+- **Locks when you walk away.** An optional app lock asks for a PIN or password at launch and
+  after idle time, with two-factor from any authenticator app (offline, no account). Only a
+  salted hash is stored.
+- **Looks the way you like.** Four looks (Porch, Glass, Paper, Charcoal), each in light and dark,
+  from Settings → Appearance.
+- **Keeps an eye on your servers.** Every SSH terminal shows the server's CPU, memory, disk
+  (every mount) and uptime in a thin strip, read from `/proc` over the existing connection.
+- **Switches database engines without losing data.** Sites → Migrate copies every database
+  from MariaDB to MySQL or back, with a progress bar you can pause or cancel; it also imports
+  projects and databases from Laragon, XAMPP and FlyEnv.
 - **Linux, Windows and macOS**, dark and light mode.
 
 ## Install
 
-Download the file for your system from the **[latest release](../../releases/latest)**.
+Download the file for your system from the **[latest release](https://github.com/livrens/veranda/releases/latest)**.
+(Replace `1.0.9` below with the version you downloaded.)
 
 ### Linux
 
 **Debian, Ubuntu, Kubuntu, Linux Mint, Pop!_OS** (`.deb`):
 ```sh
-sudo apt install ./Veranda_0.5.0_amd64.deb
+sudo apt install ./Veranda_1.0.9_amd64.deb
 ```
-Veranda appears in your application menu. Updates: Veranda shows a banner and opens the release page;
-download the new `.deb` and run the same command.
+Veranda appears in your application menu. Updates install in place from the app: it downloads the
+signed package and installs it through the system's password prompt.
 
 **Fedora, openSUSE, RHEL** (`.rpm`):
 ```sh
-sudo dnf install ./Veranda-0.5.0-1.x86_64.rpm     # or: sudo zypper install ./Veranda-*.rpm
+sudo dnf install ./Veranda-1.0.9-1.x86_64.rpm     # or: sudo zypper install ./Veranda-*.rpm
 ```
 
 **Any distribution** (`.AppImage`, no installation):
 ```sh
-chmod +x Veranda_0.5.0_amd64.AppImage
-./Veranda_0.5.0_amd64.AppImage
+chmod +x Veranda_1.0.9_amd64.AppImage
+./Veranda_1.0.9_amd64.AppImage
 ```
 The AppImage can update itself from inside the app. Move it to a folder like `~/Applications`
 if you want to keep it around.
@@ -89,18 +100,18 @@ hint, or run `veranda doctor --fix-ports` from the CLI. You can also use 8080/84
 
 ### Windows 10 / 11
 
-1. Download `Veranda_0.5.0_x64-setup.exe` and run it. If SmartScreen says "Windows protected your
+1. Download `Veranda_1.0.9_x64-setup.exe` and run it. If SmartScreen says "Windows protected your
    PC", click **More info → Run anyway** (the installer is new and not yet widely downloaded;
    that is all the warning means).
 2. Follow the installer. Veranda is added to the Start menu. The Microsoft WebView2 runtime is
    installed automatically if your PC does not have it.
-3. Prefer MSI for company deployment? `Veranda_0.5.0_x64_en-US.msi` is in the same release.
+3. Prefer MSI for company deployment? `Veranda_1.0.9_x64_en-US.msi` is in the same release.
 
 Updates install in place from the app.
 
 ### macOS (Apple Silicon and Intel)
 
-1. Download `Veranda_0.5.0_universal.dmg`, open it and drag **Veranda** into **Applications**.
+1. Download `Veranda_1.0.9_universal.dmg`, open it and drag **Veranda** into **Applications**.
 2. First launch: right-click (or Control-click) Veranda → **Open** → **Open**. macOS asks this once
    because the app is not signed with an Apple Developer certificate.
 3. Updates install in place from the app.

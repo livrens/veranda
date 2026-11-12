@@ -65,6 +65,23 @@ atau XAMPP biasanya mengharapkan `root` tanpa password: tempel password dari kar
 proyek, atau klik **Tanpa password**. Server hanya mendengarkan di `127.0.0.1`, jadi root tanpa
 password tetap hanya bisa diakses dari komputer Anda sendiri.
 
+### Berpindah antara MariaDB dan MySQL
+Tiap mesin menyimpan datanya di folder sendiri (`data/mariadb`, `data/mysql`), jadi setelah mesin
+diganti di sidebar, database Anda seolah hilang; sebenarnya tidak. **Sites → Migrate**
+menampilkan pilihan *Veranda MariaDB → MySQL (databases stored here)* (atau sebaliknya). Pilih
+lalu tekan **Migrate now**: Veranda menjalankan mesin yang tersimpan di port kosong, menyalin
+tiap database ke mesin yang sedang berjalan dengan alat dump milik mesin itu sendiri, lalu
+mematikannya lagi. Folder data lama tidak diubah, jadi Anda bisa kembali kapan saja. Database
+bernama sama di mesin yang berjalan akan diganti. Bila kata sandi root diubah setelah berpindah,
+mesin lama masih memakai kata sandi sebelumnya; ketik di kolom kata sandi.
+
+Dialog menampilkan persentase (berbobot ukuran database), database yang sedang disalin, dan
+byte yang mengalir. Jendelanya boleh ditutup; tombol **Migrate** menampilkan kemajuannya dan
+membuka kembali dialog beserta hasilnya. **Jeda** menahan salinan (tidak ada yang hilang saat
+dilanjutkan); **Batalkan setelah database ini** menyelesaikan database yang sedang disalin lalu
+berhenti, dan tekanan kedua, **Hentikan sekarang**, memutus salinan berjalan (database itu
+disalin ulang lain kali). Setiap hasil juga dicatat di `logs/migrate.log`.
+
 ## 5. Logs
 
 Kotak **Activity** mencatat apa yang Veranda lakukan (start, stop, pasang, error). Menu pilihan
@@ -88,6 +105,30 @@ tutup, rendering GPU di Linux), port web dan HTTPS, batas PHP, port database/cac
 dan pembaruan. **Trust local CA** memasang otoritas sertifikat Veranda ke penyimpanan browser agar
 `https://*.test` tidak memberi peringatan. **Config file** membuka `veranda.toml` untuk pengaturan
 yang tidak ada di formulir.
+
+### Tampilan
+**Tema** mengikuti sistem atau memaksa terang/gelap. **Gaya** memilih palet: Beranda (bawaan
+yang hangat), Kaca (permukaan tembus pandang di atas sapuan warna lembut), Kertas (datar, tinta
+di atas krem), atau Arang (abu-abu netral beraksen kuningan). Keduanya disimpan di komputer ini
+dan langsung diterapkan.
+
+### Keamanan: kunci aplikasi
+**Atur PIN atau kata sandi** meminta PIN (angka) atau kata sandi (teks apa saja, minimal 4
+karakter); sejak itu Veranda memintanya saat dibuka dan setelah waktu diam yang dipilih di
+**Kunci setelah** (atau hanya saat tombol kunci di sidebar ditekan). Layanan tetap berjalan
+selama terkunci; jendela dikaburkan dan backend menolak perintah sampai rahasia yang benar
+dimasukkan. Setelah lima kali salah Anda harus menunggu, makin lama tiap kali. Yang disimpan
+hanya hash bergaram (`etc/secrets/app-lock.json`); tidak ada pemulihan, jadi bila lupa hapus
+berkas itu saat sudah masuk ke komputer ini. Kunci ini menjaga Veranda sendiri; untuk melindungi
+berkas proyek dan database pada laptop yang dicuri, nyalakan enkripsi disk (BitLocker di
+Windows, FileVault di macOS, LUKS di Linux) dan kata sandi masuk.
+
+**Dua faktor** (opsional, setelah kunci aktif): **Aktifkan** menampilkan kunci penyiapan untuk
+aplikasi autentikator (Aegis, Google Authenticator, Authy, 1Password, Bitwarden…); ketik kunci
+itu di aplikasi, lalu kode 6 digit yang ditampilkannya. Sejak itu layar kunci meminta PIN atau
+kata sandi plus kode saat ini. Simpan kuncinya di tempat aman: tanpa aplikasi dan kunci itu,
+kunci aplikasi tidak bisa dibuka (jalan terakhir: hapus `etc/secrets/app-lock.json` saat sudah
+masuk). Semuanya berjalan offline; tanpa nomor telepon, tanpa server.
 
 ### Modul
 Inti Veranda adalah tumpukan server lokal. **Remote** (SSH), **Files** (editor), dan **Pindah ke
@@ -179,6 +220,20 @@ Veranda, gelap, terang, One Dark, Tokyo Night, Catppuccin, Dracula, Gruvbox, Mon
 Nord), kursor, scrollback, interval keep-alive, program shell lokal, dan konfirmasi saat menutup
 sesi.
 
+#### Statistik server
+Di bawah bilah terminal SSH ada strip tipis berisi **CPU**, **RAM**, dan **Disk** server beserta
+uptime-nya. Disk adalah filesystem lokal yang paling penuh (yang habis lebih dulu; nama mount
+ditampilkan bila bukan `/`); arahkan kursor untuk melihat tiap mount dan total semua disk yang
+biasanya dilaporkan konsol cloud, itulah sebabnya angka di sana bisa lebih rendah. Nilainya dibaca
+dari `/proc` dan `df` lewat koneksi yang sudah ada tiap 10 detik selama terminal itu terlihat;
+tidak ada yang berjalan saat tab tersembunyi. Klik strip untuk menyembunyikannya; pengaturan
+terminal (ikon roda gigi) punya kotak centang untuk menampilkannya lagi.
+
+#### Jendela kecil
+Saat area terminal lebih sempit dari sekitar 640 px, panel snippet melayang di atas terminal
+alih-alih menjepitnya; klik di terminal menutupnya. Bilah atas membuang nama host dan label
+tombol lebih dulu, baru teks status.
+
 ### SFTP
 Pilih host lalu **Connect**. Panel kiri komputer ini, panel kanan server. Klik dua kali folder
 untuk masuk, pakai kotak jalur, **↑**, home, dan segarkan. Pilih file (Ctrl atau Shift untuk
@@ -230,7 +285,7 @@ tanda tangannya dengan kunci yang sama, memasangnya lewat dialog kata sandi sist
 (polkit/`pkexec`), lalu memulai ulang. Jika `pkexec` tidak ada, banner memberi tahu lokasi paket
 yang sudah diunduh agar bisa dipasang dengan `sudo dpkg -i` atau `sudo rpm -U`.
 
-Veranda memeriksa rilis GitHub proyek ini 8 detik setelah dibuka, tiap jam, dan saat jendela kembali tampil setelah 30 menit atau lebih, lalu
+Veranda memeriksa rilis GitHub proyek ini (github.com/livrens/veranda) 8 detik setelah dibuka, tiap jam, dan saat jendela kembali tampil setelah 30 menit atau lebih, lalu
 menampilkan spanduk; **Update now** mengunduh installer bertanda tangan dan memulai ulang. Dengan
 **Install updates automatically** aktif, unduhan dan mulai ulang terjadi sendiri: saat opsi itu
 dinyalakan, pada tiap pemeriksaan, dan setelah **Check for updates**. Pembaruan mandiri berjalan

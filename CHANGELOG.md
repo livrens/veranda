@@ -10,6 +10,14 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-11-12
+
+### Changed
+- README (English and Indonesian) and the user guide describe the current features: app lock
+  with two-factor, looks, terminal server stats, MariaDB ↔ MySQL migration with pause/cancel;
+  install examples use current file names; .deb/.rpm installs update in place.
+- CI and Release workflows use `actions/checkout@v5` (Node 24 runners, no deprecation notice).
+
 ## [1.0.9] - 2026-11-12
 
 ### Changed

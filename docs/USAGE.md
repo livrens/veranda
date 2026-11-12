@@ -282,7 +282,7 @@ checks its signature with the same key, and installs it through the system's pas
 (polkit/`pkexec`), then restarts. If `pkexec` is missing, the banner tells you where the
 downloaded package is so you can install it with `sudo dpkg -i` or `sudo rpm -U`.
 
-Veranda checks the GitHub releases of this project 8 seconds after start, every hour, and when the window comes back to the foreground after 30 minutes or more, and
+Veranda checks the GitHub releases of this project (github.com/livrens/veranda) 8 seconds after start, every hour, and when the window comes back to the foreground after 30 minutes or more, and
 shows a banner; **Update now** downloads the signed installer and restarts. With **Install
 updates automatically** on, the download and restart happen by themselves: right when you switch
 it on, at each check, and after **Check for updates**. Self-update works for .deb, .rpm and

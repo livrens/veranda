@@ -51,30 +51,41 @@ berjalan tanpa Anda nyalakan.
   dan git, setelan VS Code dan Claude Code ke satu file terenkripsi; pulihkan di komputer baru
   (OS apa pun) dan Veranda memasang ulang paket, meng-clone repository, dan memasang ekstensi
   Anda lagi.
+- **Terkunci saat Anda pergi.** Kunci aplikasi opsional meminta PIN atau kata sandi saat dibuka
+  dan setelah tidak dipakai beberapa saat, dengan dua faktor dari aplikasi autentikator apa pun
+  (offline, tanpa akun). Yang disimpan hanya hash bergaram.
+- **Tampilan sesuai selera.** Empat gaya (Beranda, Kaca, Kertas, Arang), masing-masing terang
+  dan gelap, dari Settings → Tampilan.
+- **Mengawasi server Anda.** Setiap terminal SSH menampilkan CPU, memori, disk (semua mount),
+  dan uptime server dalam strip tipis, dibaca dari `/proc` lewat koneksi yang sudah ada.
+- **Ganti mesin database tanpa kehilangan data.** Sites → Migrate menyalin semua database dari
+  MariaDB ke MySQL atau sebaliknya, dengan bilah kemajuan yang bisa dijeda atau dibatalkan; juga
+  mengimpor proyek dan database dari Laragon, XAMPP, dan FlyEnv.
 - **Linux, Windows, dan macOS**, mode gelap dan terang.
 
 ## Pemasangan
 
-Unduh berkas untuk sistem Anda dari **[rilis terbaru](../../releases/latest)**.
+Unduh berkas untuk sistem Anda dari **[rilis terbaru](https://github.com/livrens/veranda/releases/latest)**.
+(Ganti `1.0.9` di bawah dengan versi yang Anda unduh.)
 
 ### Linux
 
 **Debian, Ubuntu, Kubuntu, Linux Mint, Pop!_OS** (`.deb`):
 ```sh
-sudo apt install ./Veranda_0.5.0_amd64.deb
+sudo apt install ./Veranda_1.0.9_amd64.deb
 ```
-Veranda muncul di menu aplikasi. Pembaruan: Veranda menampilkan pemberitahuan dan membuka halaman
-rilis; unduh `.deb` baru lalu jalankan perintah yang sama.
+Veranda muncul di menu aplikasi. Pembaruan dipasang dari dalam aplikasi: paket bertanda tangan
+diunduh lalu dipasang lewat dialog kata sandi sistem.
 
 **Fedora, openSUSE, RHEL** (`.rpm`):
 ```sh
-sudo dnf install ./Veranda-0.5.0-1.x86_64.rpm     # atau: sudo zypper install ./Veranda-*.rpm
+sudo dnf install ./Veranda-1.0.9-1.x86_64.rpm     # atau: sudo zypper install ./Veranda-*.rpm
 ```
 
 **Distribusi apa pun** (`.AppImage`, tanpa pemasangan):
 ```sh
-chmod +x Veranda_0.5.0_amd64.AppImage
-./Veranda_0.5.0_amd64.AppImage
+chmod +x Veranda_1.0.9_amd64.AppImage
+./Veranda_1.0.9_amd64.AppImage
 ```
 AppImage bisa memperbarui dirinya dari dalam aplikasi. Pindahkan ke folder seperti
 `~/Applications` agar rapi.
@@ -85,18 +96,18 @@ Settings.
 
 ### Windows 10 / 11
 
-1. Unduh `Veranda_0.5.0_x64-setup.exe` lalu jalankan. Jika SmartScreen berkata "Windows protected
+1. Unduh `Veranda_1.0.9_x64-setup.exe` lalu jalankan. Jika SmartScreen berkata "Windows protected
    your PC", klik **More info → Run anyway** (pemasangnya masih baru dan belum banyak diunduh;
    hanya itu arti peringatannya).
 2. Ikuti pemasangnya. Veranda ditambahkan ke menu Start. Runtime Microsoft WebView2 dipasang
    otomatis jika komputer Anda belum punya.
-3. Perlu MSI untuk pemasangan di perusahaan? `Veranda_0.5.0_x64_en-US.msi` ada di rilis yang sama.
+3. Perlu MSI untuk pemasangan di perusahaan? `Veranda_1.0.9_x64_en-US.msi` ada di rilis yang sama.
 
 Pembaruan dipasang langsung dari dalam aplikasi.
 
 ### macOS (Apple Silicon dan Intel)
 
-1. Unduh `Veranda_0.5.0_universal.dmg`, buka, lalu seret **Veranda** ke **Applications**.
+1. Unduh `Veranda_1.0.9_universal.dmg`, buka, lalu seret **Veranda** ke **Applications**.
 2. Peluncuran pertama: klik kanan (atau Control-klik) Veranda → **Open** → **Open**. macOS bertanya
    sekali karena aplikasi belum ditandatangani sertifikat Apple Developer.
 3. Pembaruan dipasang langsung dari dalam aplikasi.
