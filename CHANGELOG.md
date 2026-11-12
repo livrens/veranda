@@ -10,6 +10,8 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-11-12
+
 ### Fixed
 - Terminal: the view is sized again whenever the stats strip, search row or window changes the
   space, so the bottom lines (the prompt) are no longer hidden below the edge; new output keeps
