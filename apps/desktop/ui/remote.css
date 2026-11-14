@@ -65,6 +65,22 @@ textarea.editor { width: 100%; min-height: 320px; }
 .term-add { height: 32px; width: 32px; border: 1px dashed var(--line); background: transparent; border-radius: 9px; color: var(--muted); cursor: pointer; display: inline-grid; place-items: center; flex: none; }
 .term-add:hover { color: var(--accent); border-color: var(--accent); }
 .term-add svg { width: 14px; height: 14px; }
+/* "+" menu: local terminal or a saved host (labels only). Box, border and shadow come from .ctx-menu (app.css). */
+.term-menu { width: 248px; max-width: calc(100vw - 16px); }
+.term-menu .tm-item { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; flex: none; }
+.term-menu .tm-item:focus { background: var(--accent-soft); color: var(--accent); outline: 0; }
+.term-menu .tm-item svg { width: 14px; height: 14px; flex: none; }
+.term-menu .tm-item > svg { opacity: .7; }
+.term-menu .tm-ico { display: inline-flex; flex: none; color: var(--muted); }
+.term-menu .tm-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.term-menu .tm-sep { height: 1px; flex: none; background: var(--line); margin: 4px 2px; }
+.term-menu .tm-list { display: flex; flex-direction: column; min-height: 0; max-height: min(296px, 50vh); overflow-y: auto; scrollbar-width: thin; }
+.term-menu .tm-group { flex: none; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 700; padding: 8px 10px 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.term-menu .tm-search { display: flex; align-items: center; gap: 8px; flex: none; padding: 0 10px 4px; color: var(--muted); }
+.term-menu .tm-search svg { width: 14px; height: 14px; flex: none; }
+.term-menu .tm-search input { flex: 1; min-width: 0; height: 28px; border: 0; background: transparent; padding: 0; box-shadow: none !important; font-size: 12.5px; }
+.term-menu .tm-empty { padding: 10px; color: var(--faint); font-size: 12px; text-align: center; }
+:root[data-skin="glass"] .term-menu { backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
 .term-stage { flex: 1; min-height: 0; position: relative; border: 1px solid var(--line); border-radius: 0 var(--r) var(--r) var(--r); background: var(--surface); overflow: hidden; display: flex; }
 .term-box { display: none; flex: 1; min-width: 0; flex-direction: column; }
 .term-box.active { display: flex; }
@@ -230,6 +246,8 @@ textarea.editor { width: 100%; min-height: 320px; }
 .tsc .tsk s::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--h, 0%); background: var(--ok); transition: height .6s ease; }
 .tsc .tsk s.warn::after { background: var(--warn); } .tsc .tsk s.bad::after { background: var(--bad); }
 .tsc.up { margin-left: auto; }
+/* figures that have not been refreshed for a while (failed reads, a silent link): dimmed */
+.term-stats.stale .tsc { opacity: .5; }
 
 /* ---------- narrow terminal stage: the snippets panel floats over the terminal instead of
    squeezing it, and the bar keeps only what fits ---------- */

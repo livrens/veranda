@@ -3,7 +3,7 @@
 (function () {
   const R = {
     view: null,            // last `remote_state` result
-    terms: new Map(),      // id -> { id, term, fit, search, el, tab, info, hostId, quick, local, closed }
+    terms: new Map(),      // id -> { id, term, fit, search, el, tab, label, info, hostId, quick, local, closed }
     active: null,          // active terminal id
     sftp: null,            // { id, host_id, label, home }
     panes: { local: { path: "", entries: [], sel: new Set() }, remote: { path: "", entries: [], sel: new Set() } },
@@ -14,6 +14,7 @@
     side: { open: false, enter: true, q: "" },   // snippets panel in the terminal
     privacy: true,         // hide addresses/ports/user names in Hosts and History (default on)
     reveal: new Set(),     // row keys temporarily revealed while privacy mode is on
+    tabMenu: null,         // the open "+" menu of the terminal tabs: { el, off } (built on click, removed on close)
   };
   try { R.side.open = localStorage.getItem("veranda.snipPanel") === "1"; R.side.enter = localStorage.getItem("veranda.snipEnter") !== "0"; R.privacy = localStorage.getItem("veranda.privacy") !== "0"; } catch (e) {}
   const MASK = "•••";
@@ -28,6 +29,49 @@
   const settings = () => R.view?.store.settings || {};
   const hostsOf = () => R.view?.store.hosts || [];
   const hostById = (id) => hostsOf().find((h) => h.id === id);
+  /* Error texts and password prompts never show an address, a port or user@address - only the host's label.
+     Always on (independent of the privacy switch). `host` is a host profile ({ address, label, jump_host_id }); its
+     jump hosts are covered too (`jump` overrides the first hop). Without a profile every saved host is tried.
+     Display only: never use the result for anything that is stored or sent to the backend. */
+  const ADDR_MIN = 4;    // a bare address shorter than this may be an ordinary word: only its user@addr / addr:port forms are replaced
+  function hideAddr(text, host, jump) {
+    let out = String(text ?? ""); if (!out) return out;
+    const list = [];
+    if (host) { list.push(host); let j = jump || hostById(host.jump_host_id); for (let n = 0; j && n < 8 && !list.includes(j); n++) { list.push(j); j = hostById(j.jump_host_id); } }
+    else list.push(...hostsOf());
+    const seen = new Set();
+    for (const h of list.slice().sort((a, b) => String(b.address || "").trim().length - String(a.address || "").trim().length)) {
+      const addr = String(h.address || "").trim(), low = addr.toLowerCase();
+      if (!addr || seen.has(low)) continue; seen.add(low);
+      const label = String(h.label || "").trim();
+      // a label that is itself the address is no label: Quick connect gets its generic name, a saved host the mask
+      const name = label && !label.toLowerCase().includes(low) ? label : h.quick ? t("rm.quickSession") : MASK;
+      const a = addr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), A = `(?:\\[${a}\\]|${a})`;
+      const user = "[^\\s@:/\"'`()<>\\[\\]]+@", port = ":\\d{1,5}";
+      const forms = `${user}${A}(?:${port})?|${A}${port}` + (addr.length >= ADDR_MIN ? `|${A}` : "");   // longest form first
+      out = out.replace(new RegExp(`(^|[^\\w.@-])(?:${forms})(?![\\w-]|\\.\\w)`, "gi"), (m, pre) => pre + name);
+    }
+    return out;
+  }
+  // `user@host:port` (Quick connect, history target) -> a label-less profile for hideAddr; `quick` marks a Quick connect session
+  const quickProfile = (spec, label, quick) => {
+    let s = String(spec || "").trim().replace(/^ssh:\/\//, ""); const at = s.lastIndexOf("@"); if (at >= 0) s = s.slice(at + 1);
+    if (s.startsWith("[")) s = s.slice(1).split("]")[0]; else if (s.split(":").length === 2) s = s.split(":")[0];
+    return s ? { address: s, label: label || "", quick: !!quick } : null;
+  };
+  const termHost = (x) => (x?.hostId && hostById(x.hostId)) || (x?.quick ? quickProfile(x.quick, x.label, true) : null);
+  // a history row of a Quick connect session: the backend records it without a host id and with user@address as its label
+  const histQuick = (h) => !h.host_id && h.kind !== "local";
+  // the host a backend prompt belongs to, from its session id (terminal id, `sftp:`, `deploy:`, `snippet:`, `forward:`)
+  const promptHost = (session) => {
+    const s = String(session || ""), x = R.terms.get(s); if (x) return termHost(x);
+    const i = s.indexOf(":"), kind = s.slice(0, i), rest = s.slice(i + 1);
+    if (kind === "deploy" || kind === "snippet") return hostById(rest) || null;
+    if (kind === "forward") return hostById((R.view?.store.forwards || []).find((r) => r.id === rest)?.host_id) || null;
+    if (kind === "sftp") return hostById(R.sftpPending) || null;
+    return null;
+  };
+  const failHost = (e, host) => fail(hideAddr(typeof e === "string" ? e : e?.message || String(e), host));
   const newId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
   const fmtSize = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`;
   const fmtTime = (s) => { if (!s) return "—"; const d = new Date(s * 1000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
@@ -134,9 +178,32 @@
     fillSelect(f.elements.startup_snippet_id, st.snippets.map((s) => [s.id, s.label]), h?.startup_snippet_id, "—");
     $("#host-colors").innerHTML = COLORS.map((c) => `<button type="button" class="swatch ${(h?.color || "") === c ? "on" : ""}" data-color="${c}" style="${c ? `background:${c}` : ""}" title="${c || "none"}"></button>`).join("");
     applyAuthRows();
+    checkHostLabel();
     $("#dlg-host").showModal();
     f.elements.label.focus();
   }
+  /* A host needs a label (New host and Edit host): without one the backend falls back to the address, which would
+     then show in tabs, the SFTP host list and the "+" menu. Empty or blank -> the field is invalid, so the browser
+     refuses to submit, shows the message at the field and focuses it (same mechanism as the required address). */
+  function checkHostLabel() {
+    const e = $("#form-host").elements, inp = e.label;
+    const msg = !inp.value.trim() ? t("rm.labelRequired")
+      : labelIsAddress(inp.value, e.address.value, Number(e.port.value) || 22, e.username.value) ? t("rm.labelIsAddress") : "";
+    inp.setCustomValidity(msg);
+    return !msg;
+  }
+  /* A label that merely repeats the address would put the address back into tabs and menus. Rejected when the whole
+     label (trimmed, case-insensitive) equals address, user@address, address:port or user@address:port; a label that
+     only contains the address inside other text is fine. Pure, so it can be checked without the form. */
+  function labelIsAddress(label, address, port, username) {
+    const l = String(label).trim().toLowerCase(), a = String(address).trim().toLowerCase(), u = String(username).trim().toLowerCase();
+    if (!l || !a) return false;
+    const forms = [a, `${a}:${port}`];
+    if (u) forms.push(`${u}@${a}`, `${u}@${a}:${port}`);
+    return forms.includes(l);
+  }
+  $("#form-host").elements.label.required = true;
+  ["label", "address", "port", "username"].forEach((n) => $("#form-host").elements[n].addEventListener("input", checkHostLabel));
   function applyAuthRows() {
     const v = $("#form-host").elements.auth.value;
     $$("#form-host [data-auth]").forEach((el) => el.classList.toggle("hidden", el.dataset.auth !== v));
@@ -150,6 +217,7 @@
   $("#btn-host-clear-pw").onclick = () => { const f = $("#form-host"); f.elements.password.value = ""; f.elements.password.placeholder = ""; f.dataset.clearPw = "1"; };
   $("#form-host").onsubmit = async (ev) => {
     ev.preventDefault(); const f = ev.target, e = f.elements;
+    if (!checkHostLabel()) { e.label.reportValidity(); e.label.focus(); return; }   // never save a host without a label, or with the address as its label
     const existing = e.id.value ? hostById(e.id.value) : null;
     const host = {
       ...(existing || {}),
@@ -183,7 +251,7 @@
   $("#rm-host-search").oninput = (ev) => { R.search = ev.target.value; renderHosts(); };
   $("#quick-connect").onsubmit = (ev) => {
     ev.preventDefault(); const v = ev.target.elements.target.value.trim(); if (!v) return;
-    openTerminal({ quick: v, label: t("rm.quickSession") }); ev.target.reset();
+    openTerminal({ quick: v, label: quickLabel() }); ev.target.reset();
   };
   $("#rm-host-list").addEventListener("click", async (ev) => {
     const tag = ev.target.closest("[data-tag]"); if (tag) { R.tag = R.tag === tag.dataset.tag ? null : tag.dataset.tag; renderHosts(); return; }
@@ -253,20 +321,123 @@
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyThemeToTerms);
 
   /* ---------------- terminals ---------------- */
-  function termTitle(x) { return x.title || x.info?.label || x.label || (x.local ? t("rm.local") : "…"); }
+  /* What a tab, its tooltip, the terminal bar and the close question show for an SSH session: the label of the
+     saved host, or a generic name for Quick connect - never the title the server sends, user@address or a port
+     (the backend's own label of a Quick connect session is user@address, so `info.label` is not shown either).
+     A local terminal keeps the title of its shell. Display only. */
+  function termLabel(x) {
+    if (x.local) return x.info?.label || t("rm.local");
+    return (x.hostId ? hostById(x.hostId)?.label || x.label : x.label || t("rm.quickSession")) || "";
+  }
+  function termTitle(x) { return x.local ? x.title || termLabel(x) : termLabel(x) || "…"; }
+  // generic tab name of a Quick connect session, numbered from the second one that is open at the same time
+  function quickLabel() {
+    const used = new Set([...R.terms.values()].filter((x) => x.quick).map((x) => x.label)), base = t("rm.quickSession");
+    for (let n = 1; ; n++) { const name = n === 1 ? base : `${base} ${n}`; if (!used.has(name)) return name; }
+  }
   function renderTabs() {
     const tabs = $("#term-tabs");
-    tabs.innerHTML = [...R.terms.values()].map((x) => `<div class="term-tab ${x.id === R.active ? "active" : ""} ${x.closed ? "closed" : ""}" data-term="${x.id}" title="${esc(x.info?.label || "")}">
+    tabs.innerHTML = [...R.terms.values()].map((x) => `<div class="term-tab ${x.id === R.active ? "active" : ""} ${x.closed ? "closed" : ""}" data-term="${x.id}" title="${esc(termLabel(x))}">
       <i class="tdot ${x.info?.state || "connecting"}"></i><span class="ttitle">${esc(termTitle(x))}</span><button class="tclose" data-term-close="${x.id}" title="${t("btn.close")}">${ICONS.x}</button></div>`).join("") +
-      `<button class="term-add" id="term-add" title="${t("rm.localTerminal")}">${ICONS.plus}</button>`;
+      `<button class="term-add" id="term-add" title="${t("rm.newTab")}" aria-label="${t("rm.newTab")}"${hostsOf().length ? ` aria-haspopup="menu" aria-expanded="${R.tabMenu ? "true" : "false"}"` : ""}>${ICONS.plus}</button>`;
     $("#term-empty").classList.toggle("hidden", R.terms.size > 0);
     $("#term-stage").classList.toggle("hidden", R.terms.size === 0);
     renderCounts();
+    if (R.tabMenu) placeTabMenu();   // the "+" button was rebuilt and may have moved
+  }
+  /* "+" menu (Termius-like): local terminal or a saved host. Labels only - never an address, a port or a
+     user name, also not in a title. Nothing is fetched, stored or connected until an item is chosen. The
+     menu lives on <body> (renderTabs rewrites #term-tabs), is built on click and removed on close, and its
+     listeners exist only while it is open. */
+  // Saved hosts by group, in the order of the Hosts page; the filter looks at labels and tags only. Pure.
+  function menuSections(hosts, groups, query) {
+    const q = String(query || "").trim().toLowerCase();
+    const hit = (h) => !q || [h.label, ...(h.tags || [])].some((s) => String(s || "").toLowerCase().includes(q));
+    const names = new Map();   // group id -> "Parent / Child", depth first
+    const walk = (parent, path) => {
+      for (const g of groups) {
+        if ((g.parent_id || null) !== parent || names.has(g.id)) continue;
+        const name = path ? `${path} / ${g.name}` : g.name;
+        names.set(g.id, name); walk(g.id, name);
+      }
+    };
+    walk(null, "");
+    const out = [];
+    const loose = hosts.filter((h) => !names.has(h.group_id) && hit(h));   // no group, or a group that is gone
+    if (loose.length) out.push({ name: "", hosts: loose });
+    for (const [gid, name] of names) { const list = hosts.filter((h) => h.group_id === gid && hit(h)); if (list.length) out.push({ name, hosts: list }); }
+    return out;
+  }
+  function menuListMarkup(sections) {
+    return sections.map((s) => (s.name ? `<div class="tm-group">${esc(s.name)}</div>` : "") + s.hosts.map((h) =>
+      `<button type="button" class="tm-item" role="menuitem" data-tm-host="${esc(h.id)}"><span class="tm-ico"${h.color ? ` style="color:${esc(h.color)}"` : ""}>${ICONS[osIcon(h.os)]}</span><span class="nm">${esc(h.label || "—")}</span></button>`).join("")).join("")
+      || `<div class="tm-empty">${t("rm.noMatch")}</div>`;
+  }
+  function placeTabMenu() {
+    const m = R.tabMenu?.el, b = $("#term-add"); if (!m || !b) return;
+    const r = b.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+    m.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - w - 8))}px`;
+    m.style.top = `${Math.max(8, Math.min(r.bottom + 4, window.innerHeight - h - 8))}px`;
+  }
+  function closeTabMenu(refocus) {
+    const m = R.tabMenu; if (!m) return;
+    R.tabMenu = null; m.off(); m.el.remove();
+    const b = $("#term-add"); if (!b) return;
+    b.setAttribute("aria-expanded", "false"); if (refocus) b.focus();
+  }
+  function openTabMenu() {
+    const hosts = hostsOf(), groups = R.view?.store.groups || [];
+    const el = document.createElement("div"); el.id = "term-menu"; el.className = "ctx-menu term-menu";
+    el.setAttribute("role", "menu"); el.setAttribute("aria-label", t("rm.newTab"));
+    el.innerHTML = `<button type="button" class="tm-item" role="menuitem" data-tm="local">${ICONS.local}<span class="nm">${t("rm.localTerminal")}</span></button>
+      <div class="tm-sep" role="separator"></div>
+      ${hosts.length > 8 ? `<div class="tm-search">${ICONS.search}<input id="term-menu-q" placeholder="${t("rm.searchHostsMenu")}" aria-label="${t("rm.searchHostsMenu")}" autocomplete="off" spellcheck="false"></div>` : ""}
+      <div class="tm-list" role="none">${menuListMarkup(menuSections(hosts, groups, ""))}</div>
+      <div class="tm-sep" role="separator"></div>
+      <button type="button" class="tm-item" role="menuitem" data-tm="manage">${ICONS.gear}<span class="nm">${t("rm.manageHosts")}</span></button>`;
+    const pick = (b) => {
+      const hostId = b.dataset.tmHost, act = b.dataset.tm;
+      closeTabMenu(false);
+      if (hostId) { if (hostById(hostId)) openTerminal({ hostId }); }   // the same path as the connect button on the Hosts page
+      else if (act === "local") openTerminal({ local: true });
+      else if (act === "manage") showTab("hosts");
+    };
+    const onDown = (ev) => { if (!el.contains(ev.target) && !ev.target.closest?.("#term-add")) closeTabMenu(false); };
+    const onKey = (ev) => {
+      if (ev.key === "Escape" || ev.key === "Tab") { ev.preventDefault(); ev.stopPropagation(); closeTabMenu(true); return; }
+      if (!el.contains(ev.target)) return;
+      if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+        ev.preventDefault(); ev.stopPropagation();
+        const list = $$(".tm-item, .tm-search input", el), n = list.length, i = list.indexOf(document.activeElement);
+        list[ev.key === "ArrowDown" ? (i + 1) % n : i <= 0 ? n - 1 : i - 1]?.focus();
+      } else if (ev.key === "Enter") {
+        ev.preventDefault(); ev.stopPropagation();
+        const b = ev.target.tagName === "INPUT" ? $(".tm-list .tm-item", el) : ev.target.closest(".tm-item");   // in the search box: the first match
+        if (b) pick(b);
+      }
+    };
+    const onLeave = () => closeTabMenu(false);
+    el.addEventListener("click", (ev) => { const b = ev.target.closest(".tm-item"); if (b) pick(b); });
+    el.addEventListener("input", (ev) => {
+      if (ev.target.id !== "term-menu-q") return;
+      $(".tm-list", el).innerHTML = menuListMarkup(menuSections(hosts, groups, ev.target.value)); placeTabMenu();
+    });
+    const strip = $("#term-tabs");
+    document.addEventListener("mousedown", onDown, true); document.addEventListener("keydown", onKey, true);
+    document.addEventListener("veranda:tab", onLeave); window.addEventListener("resize", onLeave); strip.addEventListener("scroll", placeTabMenu);
+    R.tabMenu = { el, off: () => {
+      document.removeEventListener("mousedown", onDown, true); document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("veranda:tab", onLeave); window.removeEventListener("resize", onLeave); strip.removeEventListener("scroll", placeTabMenu);
+    } };
+    document.body.appendChild(el);
+    $("#term-add")?.setAttribute("aria-expanded", "true");
+    placeTabMenu();
+    $("[data-tm=local]", el).focus();
   }
   function barMarkup(x) {
     return `<div class="term-bar">
       <span class="tstate ${x.info?.state || "connecting"}"><i></i><span class="txt">${esc(stateText(x))}</span></span>
-      <span class="ttarget mono">${esc(x.info?.label || "")}</span>
+      <span class="ttarget mono">${esc(termLabel(x))}</span>
       <span class="spacer"></span>
       <button class="btn small term-snip-btn ${R.side.open ? "on" : ""}" data-tact="snippets" title="${t("nav.snippets")} (Ctrl+Shift+S)">${ICONS.snippet}<span>${t("nav.snippets")}</span></button>
       <button class="icon-btn small" data-tact="search" title="${t("rm.search")} (Ctrl+Shift+F)">${ICONS.search}</button>
@@ -281,14 +452,20 @@
   const stateText = (x) => {
     const s = x.info?.state || "connecting";
     if (s === "connected") return t("status.connected");
-    if (s === "closed") return `${t("rm.closed")}${x.info?.message ? " · " + x.info.message : ""}`;
-    if (s === "error") return `${t("rm.failed")}: ${x.info?.message || ""}`;
+    if (s === "closed") return `${t("rm.closed")}${x.info?.message ? " · " + hideAddr(x.info.message, termHost(x)) : ""}`;
+    if (s === "error") return `${t("rm.failed")}: ${hideAddr(x.info?.message || "", termHost(x))}`;
     return t("rm.connecting");
   };
   /* Server stats strip: CPU / RAM / disk meters under the bar of an SSH terminal. One tiny
-     command over the existing connection every 10 s, only for the terminal that is visible;
+     command over the existing connection every 5 s, only for the terminal that is visible;
      nothing runs while the tab is hidden, the window is in the background or the user hid it. */
   const statsOn = () => { try { return localStorage.getItem("veranda.termStats") !== "0"; } catch (e) { return true; } };
+  /* Figures older than 2.5 polls count as stale: the strip is dimmed and the tooltips say so
+     (failed reads, a link that stopped answering). Checked inside the existing poll, no timer
+     of its own; the next good reading brings the strip back. */
+  const STATS_EVERY = 5000, STATS_STALE = STATS_EVERY * 2.5;
+  const statsStale = (x) => Date.now() - (x.statsAt || 0) > STATS_STALE;
+  const dimIfStale = (x) => { if (x.stats && !x.statsDim && statsStale(x)) renderStats(x); };
   // sizes the way htop prints them (971M / 1.92G), spelled out a little
   const fmtG = (kb) => kb >= 1024 * 1024 ? `${(kb / 1024 / 1024).toFixed(kb >= 100 * 1024 * 1024 ? 0 : kb >= 10 * 1024 * 1024 ? 1 : 2)} GB` : `${Math.round(kb / 1024)} MB`;
   const fmtUp = (s) => s >= 86400 ? `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h` : s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.floor(s / 60)}m`;
@@ -325,10 +502,13 @@
     // (the prompt) end up below the edge
     if (wasHidden === show) requestAnimationFrame(() => { try { x.fit.fit(); x.term.scrollToBottom(); } catch (e) {} });
     if (!show) return;
+    const stale = x.statsDim = statsStale(x), staleT = t("rm.statsStale");
+    box.classList.toggle("stale", stale);
+    box.title = `${stale ? staleT + "\n" : ""}${t("rm.statsHint")}\n${t("rm.statsSourceNote")}`;
     const of = t("rm.statsOf");
     const cores = st.cores || st.cpus?.length || 0;
     const coreT = st.cpus?.length ? `\n${t("rm.statsPerCore")}: ${st.cpus.map((c) => `${c.toFixed(0)}%`).join("  ")}` : "";
-    const cpuT = `${t("rm.statsCpuNote")}${cores ? ` · ${cores} ${t("rm.statsCores")}` : ""}${coreT}`;
+    const cpuT = `${t("rm.statsCpuNote")}${cores ? ` · ${cores} ${t("rm.statsCores")}` : ""}${coreT}\n${t("rm.statsSourceNote")}`;
     const memPct = st.mem_total_kb ? (st.mem_used_kb / st.mem_total_kb) * 100 : null;
     const cachePct = st.mem_total_kb && st.mem_cache_kb != null ? (st.mem_cache_kb / st.mem_total_kb) * 100 : 0;
     const memT = st.mem_total_kb ? [`${t("rm.statsUsed")}: ${fmtG(st.mem_used_kb)} ${of} ${fmtG(st.mem_total_kb)} (${memPct.toFixed(0)}%)`,
@@ -346,26 +526,27 @@
       + (st.load1 != null ? tile("load", t("rm.statsLoad"), loadPct, st.load1.toFixed(2), `${(st.load5 ?? 0).toFixed(2)} · ${(st.load15 ?? 0).toFixed(2)}`, loadT) : "")
       + (st.procs_total != null ? tile("tasks", t("rm.statsTasks"), null, String(st.procs_total), st.procs_running != null ? `${st.procs_running} ${t("rm.statsRunning")}` : "", t("rm.statsTasksNote")) : "")
       + (st.uptime_secs ? tile("up", t("rm.statsUp"), null, fmtUp(st.uptime_secs), "", t("rm.statsUpNote")) : "");
+    if (stale) for (const el of box.children) el.title = el.title ? `${staleT}\n${el.title}` : staleT;
   }
   let statsTimer = null;
   async function pollStats(force) {
     const x = R.terms.get(R.active);
-    if (!x || x.closed || x.info?.kind === "local" || x.info?.state !== "connected") return;
+    if (!x || x.closed || x.info?.kind === "local") return;
     if (!statsOn() || document.visibilityState !== "visible" || !$("#tab-terminal").classList.contains("active")) return;
-    if (x.statsBusy) return;
+    if (x.info?.state !== "connected" || x.statsBusy) { dimIfStale(x); return; }
     x.statsBusy = true;
     try {
       const st = await invoke("term_stats", { id: x.id });
-      if (st) { x.stats = st; renderStats(x); if (st.cpu == null && !force) setTimeout(() => pollStats(true), 3000); }
+      if (st) { x.stats = st; x.statsAt = Date.now(); renderStats(x); if (st.cpu == null && !force) setTimeout(() => pollStats(true), 3000); }
     } catch (e) { /* a server without /proc or a dropped channel: keep the last values */ }
-    finally { x.statsBusy = false; }
+    finally { x.statsBusy = false; dimIfStale(x); }
   }
-  function scheduleStats() { clearInterval(statsTimer); statsTimer = setInterval(() => pollStats(false), 5000); setTimeout(() => pollStats(false), 400); }
+  function scheduleStats() { clearInterval(statsTimer); statsTimer = setInterval(() => pollStats(false), STATS_EVERY); setTimeout(() => pollStats(false), 400); }
   function updateBar(x) {
     renderStats(x);
     const bar = $(".term-bar", x.el); if (!bar) return;
     const st = $(".tstate", bar); st.className = `tstate ${x.info?.state || "connecting"}`; $(".txt", st).textContent = stateText(x);
-    $(".ttarget", bar).textContent = x.info?.label || "";
+    $(".ttarget", bar).textContent = termLabel(x);
   }
   async function openTerminal(opts) {
     const id = newId();
@@ -378,7 +559,7 @@
     term.loadAddon(fit); term.loadAddon(search);
     term.loadAddon(new WebLinksAddon.WebLinksAddon((ev, uri) => invoke("remote_open_link", { url: uri }).catch(fail)));
     try { term.loadAddon(new Unicode11Addon.Unicode11Addon()); term.unicode.activeVersion = "11"; } catch (e) {}
-    const x = { id, term, fit, search, el, title: "", info: { state: "connecting", label: opts.label || hostById(opts.hostId)?.label || (opts.local ? t("rm.local") : ""), target: opts.quick || (hostById(opts.hostId) ? hostSummary(hostById(opts.hostId)) : "") }, hostId: opts.hostId || null, quick: opts.quick || null, local: !!opts.local, closed: false };
+    const x = { id, term, fit, search, el, title: "", label: opts.label || hostById(opts.hostId)?.label || "", info: { state: "connecting", label: opts.label || hostById(opts.hostId)?.label || (opts.local ? t("rm.local") : ""), target: opts.quick || (hostById(opts.hostId) ? hostSummary(hostById(opts.hostId)) : "") }, hostId: opts.hostId || null, quick: opts.quick || null, local: !!opts.local, closed: false };
     R.terms.set(id, x);
     $(".term-head", el).innerHTML = barMarkup(x);
     el.style.background = xtermTheme().background;
@@ -386,7 +567,7 @@
     new ResizeObserver(() => { if (x.el.classList.contains("active")) { try { fit.fit(); } catch (e) {} } }).observe($(".term-view", el));
     term.onData((d) => { if (!x.closed) invoke("term_write", { id, data: d }).catch(() => {}); });
     term.onResize(({ cols, rows }) => { if (!x.closed) invoke("term_resize", { id, cols, rows }).catch(() => {}); });
-    term.onTitleChange((title) => { x.title = title; renderTabs(); });
+    term.onTitleChange((title) => { if (!x.local) return; x.title = title; renderTabs(); });   // an SSH tab keeps its label: a server's title is often user@host
     term.onSelectionChange(() => { if (settings().copy_on_select && term.hasSelection()) navigator.clipboard.writeText(term.getSelection()).catch(() => {}); });
     term.onBell(() => { if (settings().bell) { try { const ctx = new AudioContext(); const o = ctx.createOscillator(); o.frequency.value = 880; o.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.08); } catch (e) {} } });
     term.attachCustomKeyEventHandler((ev) => {
@@ -414,9 +595,10 @@
       const info = await invoke("term_open", { req: { id, host_id: opts.hostId || null, quick: opts.quick || null, local: !!opts.local, cols: term.cols, rows: term.rows, cwd: opts.cwd || null } });
       x.info = { ...x.info, ...info };
     } catch (e) {
-      x.info.state = "error"; x.info.message = String(e?.message || e); x.closed = true;
-      term.write(`\r\n\x1b[31m${t("rm.failed")}: ${String(e?.message || e).replace(/\r?\n/g, "\r\n")}\x1b[0m\r\n`);
-      toast(`${x.info.label}: ${e?.message || e}`, "bad");
+      const msg = hideAddr(String(e?.message || e), termHost(x));
+      x.info.state = "error"; x.info.message = msg; x.closed = true;
+      term.write(`\r\n\x1b[31m${t("rm.failed")}: ${msg.replace(/\r?\n/g, "\r\n")}\x1b[0m\r\n`);
+      toast(hideAddr(`${termLabel(x)}: ${msg}`, termHost(x)), "bad");
     }
     updateBar(x); renderTabs();
     return id;
@@ -445,13 +627,18 @@
   }
   async function reconnect(x) {
     if (!x.closed) return;
-    const opts = x.local ? { local: true } : x.hostId ? { hostId: x.hostId } : { quick: x.quick, label: x.info.label };
+    const opts = x.local ? { local: true } : x.hostId ? { hostId: x.hostId } : { quick: x.quick, label: x.label };
     await closeTerminal(x.id, true);
     openTerminal(opts);
   }
   $("#term-tabs").addEventListener("click", (ev) => {
     const c = ev.target.closest("[data-term-close]"); if (c) { closeTerminal(c.dataset.termClose); return; }
-    if (ev.target.closest("#term-add")) { openTerminal({ local: true }); return; }
+    if (ev.target.closest("#term-add")) {
+      if (R.tabMenu) closeTabMenu(false);
+      else if (hostsOf().length) openTabMenu();
+      else openTerminal({ local: true });   // no saved host yet: nothing to choose from
+      return;
+    }
     const tab = ev.target.closest("[data-term]"); if (tab) activateTerminal(tab.dataset.term);
   });
   $("#term-tabs").addEventListener("auxclick", (ev) => { const tab = ev.target.closest("[data-term]"); if (tab && ev.button === 1) closeTerminal(tab.dataset.term); });
@@ -587,10 +774,10 @@
   });
   listen("term-state", (ev) => {
     const x = R.terms.get(ev.payload.id); if (!x) return;
-    x.info = { ...x.info, ...ev.payload };
+    x.info = { ...x.info, ...ev.payload, message: hideAddr(ev.payload.message, termHost(x)) };
     if (ev.payload.state === "connected") scheduleStats();
     if (ev.payload.state === "closed" || ev.payload.state === "error") {
-      if (!x.closed) x.term.write(`\r\n\x1b[2m[${t("rm.sessionEnded")}${ev.payload.message ? ": " + ev.payload.message : ""}] ${t("rm.pressReconnect")}\x1b[0m\r\n`);
+      if (!x.closed) x.term.write(`\r\n\x1b[2m[${t("rm.sessionEnded")}${x.info.message ? ": " + x.info.message : ""}] ${t("rm.pressReconnect")}\x1b[0m\r\n`);
       x.closed = true;
     }
     updateBar(x); renderTabs();
@@ -613,7 +800,8 @@
     const p = R.promptQueue.shift(); R.promptOpen = p;
     const f = $("#form-prompt"); f.reset();
     const fp = $("#prompt-fp");
-    $("#prompt-title").textContent = p.kind === "hostkey" ? (p.status === "changed" ? t("rm.hostKeyChanged") : t("rm.hostKeyNew")) : p.title || "";
+    const ph = p.kind === "hostkey" ? null : promptHost(p.session);
+    $("#prompt-title").textContent = p.kind === "hostkey" ? (p.status === "changed" ? t("rm.hostKeyChanged") : t("rm.hostKeyNew")) : hideAddr(p.title || "", ph);
     if (p.kind === "hostkey") {
       $("#prompt-text").textContent = p.status === "changed" ? t("rm.hostKeyChangedText", { host: `${p.host}:${p.port}` }) : t("rm.hostKeyNewText", { host: `${p.host}:${p.port}` });
       fp.innerHTML = `<b>${esc(p.algorithm)}</b><code>${esc(p.fingerprint)}</code>`; fp.classList.remove("hidden"); fp.classList.toggle("warn", p.status === "changed");
@@ -622,7 +810,7 @@
       $("#btn-prompt-ok").classList.toggle("danger", p.status === "changed");
     } else {
       // title: the host; subtitle: the server's/our full sentence; label: just what to type
-      $("#prompt-text").textContent = p.prompt || ""; fp.classList.add("hidden");
+      $("#prompt-text").textContent = hideAddr(p.prompt || "", ph); fp.classList.add("hidden");
       $("#prompt-input-row").classList.remove("hidden");
       $("#prompt-label").textContent = p.kind === "passphrase" ? t("rm.passphrase") : p.kind === "interactive" ? t("rm.answer") : t("db.password");
       f.elements.value.type = p.echo ? "text" : "password";
@@ -663,19 +851,21 @@
   /* ---------------- SFTP ---------------- */
   function renderSftpHosts() {
     const sel = $("#sftp-host"); const cur = sel.value;
-    sel.innerHTML = hostsOf().map((h) => `<option value="${esc(h.id)}">${esc(h.label)} · ${esc(hostSummary(h))}</option>`).join("") || `<option value="">${t("rm.noHosts")}</option>`;
+    sel.innerHTML = hostsOf().map((h) => `<option value="${esc(h.id)}">${esc(h.label || "—")}</option>`).join("") || `<option value="">${t("rm.noHosts")}</option>`;
     if (cur) sel.value = cur;
   }
   async function sftpConnect() {
     const hostId = $("#sftp-host").value; if (!hostId) { toast(t("rm.noHosts"), "info"); return; }
     if (R.sftp) await sftpDisconnect();
     const b = $("#btn-sftp-connect"); b.disabled = true; b.classList.add("busy");
+    R.sftpPending = hostId;   // lets promptHost() find the host while the backend asks for a password
     try {
       R.sftp = await invoke("sftp_open", { hostId });
       $("#btn-sftp-disconnect").disabled = false; $("#btn-sftp-upload").disabled = false; $("#btn-sftp-download").disabled = false;
       await Promise.all([loadPane("remote", R.sftp.home), R.panes.local.path ? Promise.resolve() : loadPane("local", settings().sftp_local_root || "")]);
       toast(t("rm.sftpConnected", { name: R.sftp.label }), "ok");
-    } catch (e) { fail(e); R.sftp = null; renderPane("remote"); }
+    } catch (e) { failHost(e, hostById(hostId)); R.sftp = null; renderPane("remote"); }
+    R.sftpPending = null;
     b.disabled = false; b.classList.remove("busy");
   }
   async function sftpDisconnect() {
@@ -893,7 +1083,7 @@
     try {
       if (sw.checked) { const s = await invoke("forward_start", { id }); toast(t("rm.forwardOn", { port: s.bound_port }), "ok"); }
       else { await invoke("forward_stop", { id }); toast(t("rm.forwardOff"), "ok"); }
-    } catch (x) { fail(x); }
+    } catch (x) { failHost(x, promptHost("forward:" + id)); }
     refresh();
   });
   setInterval(() => { if ((R.view?.forwards_active || []).length && $("#tab-forward").classList.contains("active")) refresh(); }, 5000);
@@ -964,7 +1154,7 @@
     return new Promise((resolve) => {
       const dlg = $("#dlg-run-snippet"), f = $("#form-run-snippet");
       $("#run-snippet-title").textContent = title;
-      $("#run-snippet-hosts").innerHTML = hostsOf().map((h) => `<label class="check"><input type="checkbox" name="h" value="${esc(h.id)}" ${preselect?.includes(h.id) ? "checked" : ""}><span>${esc(h.label)} <small class="mono">${esc(hostSummary(h))}</small></span></label>`).join("") || `<div class="empty small">${t("rm.noHosts")}</div>`;
+      $("#run-snippet-hosts").innerHTML = hostsOf().map((h) => `<label class="check"><input type="checkbox" name="h" value="${esc(h.id)}" ${preselect?.includes(h.id) ? "checked" : ""}><span>${esc(h.label || "—")}</span></label>`).join("") || `<div class="empty small">${t("rm.noHosts")}</div>`;
       const done = (v) => { dlg.close(); resolve(v); };
       f.onsubmit = (ev) => { ev.preventDefault(); done($$("input[name=h]:checked", f).map((i) => i.value)); };
       dlg.oncancel = (ev) => { ev.preventDefault(); done(null); };
@@ -986,7 +1176,7 @@
       out.innerHTML = `<div class="activity-head"><span>${esc(s.label)}</span><span class="state busy">${ICONS.spinner}${t("rm.running", { n: ids.length })}</span></div>`;
       try {
         const results = await invoke("snippet_run", { snippetId: s.id, script: null, hostIds: ids });
-        out.innerHTML = `<div class="activity-head"><span>${esc(s.label)}</span><button class="btn small ghost" id="btn-snip-out-close">${t("btn.close")}</button></div>` + results.map((r) => `<div class="snip-result ${r.error || (r.exit && r.exit !== 0) ? "bad" : "ok"}"><div class="srh"><b>${esc(r.label)}</b><span class="pill">${r.error ? esc(r.error) : `exit ${r.exit ?? "?"}`}</span></div><pre>${esc((r.stdout + (r.stderr ? "\n" + r.stderr : "")).trim() || "—")}</pre></div>`).join("");
+        out.innerHTML = `<div class="activity-head"><span>${esc(s.label)}</span><button class="btn small ghost" id="btn-snip-out-close">${t("btn.close")}</button></div>` + results.map((r) => `<div class="snip-result ${r.error || (r.exit && r.exit !== 0) ? "bad" : "ok"}"><div class="srh"><b>${esc(r.label)}</b><span class="pill">${r.error ? esc(hideAddr(r.error, hostById(r.host_id))) : `exit ${r.exit ?? "?"}`}</span></div><pre>${esc((r.stdout + (r.stderr ? "\n" + r.stderr : "")).trim() || "—")}</pre></div>`).join("");
         $("#btn-snip-out-close").onclick = () => out.classList.add("hidden");
       } catch (x) { fail(x); out.classList.add("hidden"); }
     }
@@ -1067,7 +1257,7 @@
       }
       else if (b.dataset.keyDeploy) {
         const ids = await pickHosts(`${t("rm.deploy")}: ${k.label}`); if (!ids?.length) return;
-        for (const hid of ids) { try { toast(await invoke("remote_key_deploy", { hostId: hid, keyId: k.id }), "ok"); } catch (x) { fail(x); } }
+        for (const hid of ids) { try { toast(await invoke("remote_key_deploy", { hostId: hid, keyId: k.id }), "ok"); } catch (x) { failHost(x, hostById(hid)); } }
       }
       else if (b.dataset.keyPass) {
         const current = k.encrypted && !k.has_passphrase ? await askText(t("rm.changePassphrase"), t("rm.currentPassphrase"), "", true) : null;
@@ -1103,7 +1293,7 @@
     if (!R.view) return;
     $("#hist-list").innerHTML = R.view.store.history.slice(0, 200).map((h, i) => `<div class="row ${h.ok ? "" : "missing"}" data-hist="${esc(h.host_id || "")}">
         <div class="ico">${h.kind === "sftp" ? ICONS.sftp : h.kind === "forward" ? ICONS.forward : h.kind === "snippet" ? ICONS.snippet : ICONS.terminal}</div>
-        <div><div class="name">${esc(h.label)} <span class="pill">${esc(h.kind)}</span></div><div class="meta"><span class="mono">${esc(maskAddr("t:" + i, h.target))}</span><span>${fmtTime(h.started_at)}</span>${h.ended_at ? `<span>· ${Math.max(1, Math.round((h.ended_at - h.started_at) / 60))} min</span>` : ""}${h.ok ? "" : `<span class="state warn"><i></i>${esc(h.error.split("\n")[0].slice(0, 120))}</span>`}</div></div>
+        <div><div class="name">${esc(histQuick(h) ? t("rm.quickSession") : h.label)} <span class="pill">${esc(h.kind)}</span></div><div class="meta"><span class="mono">${esc(maskAddr("t:" + i, h.target))}</span><span>${fmtTime(h.started_at)}</span>${h.ended_at ? `<span>· ${Math.max(1, Math.round((h.ended_at - h.started_at) / 60))} min</span>` : ""}${h.ok ? "" : `<span class="state warn"><i></i>${esc(hideAddr(hideAddr(h.error, hostById(h.host_id)), quickProfile(h.target, h.label, histQuick(h))).split("\n")[0].slice(0, 120))}</span>`}</div></div>
         <div class="act">${h.host_id && hostById(h.host_id) ? `<button class="icon-btn go" data-hist-connect="${esc(h.host_id)}" title="${t("rm.openTerminal")}">${ICONS.terminal}</button>` : ""}${R.privacy ? `<button class="icon-btn ${R.reveal.has("t:" + i) ? "on" : ""}" data-hist-reveal="${i}" title="${t("rm.reveal")}">${ICONS.eye}</button>` : ""}<button class="icon-btn" data-hist-copy="${i}" title="${t("rm.copyAddr")}">${ICONS.copy}</button></div></div>`).join("")
       || `<div class="empty">${ICONS.history}<span>${t("rm.noHistory")}</span></div>`;
   }
