@@ -10,6 +10,16 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 
 ## [Unreleased]
 
+## [1.0.14] - 2026-11-16
+
+### Fixed
+- Terminal stats strip: when the disk reading is slow on the server, the figures that did arrive
+  are still shown instead of the strip staying empty.
+- Terminal stats strip: when no reading can be taken, a short reason is shown (refused by the
+  server, no answer in time, or no data) rather than nothing.
+- Terminal stats strip: after three readings in a row that failed or ran out of time, the server
+  is asked once a minute instead of every 5 s; the normal pace returns with the first whole reading.
+
 ## [1.0.13] - 2026-11-16
 
 ### Added
