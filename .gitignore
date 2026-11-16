@@ -18,5 +18,10 @@ secrets/
 # AI tooling / local indexes (never commit)
 .claude/
 CLAUDE.md
+CLAUDE.local.md
+AI-RULES.md
+ATURAN.md
+.claude.json
+.mcp.json
 .cursor/
 .aider*

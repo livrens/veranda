@@ -10,6 +10,20 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-11-16
+
+### Added
+- Terminal: the `+` button opens a menu to start a local terminal or a session on a saved host,
+  with search; hosts are listed by label only.
+
+### Changed
+- Terminal stats strip: clearer tooltips, and figures that have not been refreshed for a while are
+  dimmed and marked as stale.
+- Privacy: host address and port no longer appear in error messages, the password dialog, tab
+  titles, the SFTP host list, session names in History and the snippet host picker. Quick connect
+  sessions get a generic name.
+- Host form: a label is required, and a label that equals the address is rejected.
+
 ## [1.0.12] - 2026-11-12
 
 ### Changed
