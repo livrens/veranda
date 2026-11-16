@@ -18,8 +18,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{mpsc, oneshot};
 use veranda_core::Veranda;
 use veranda_remote::client::{
-    self, Auth, AuthMethod, BoxFut, ConnectRequest, Connection, HostKeyRequest, HostKeyStatus,
-    Prompter, SecretKind, SecretRequest, Target,
+    self, Auth, AuthMethod, BoxFut, ConnectRequest, Connection, ExecFail, HostKeyRequest,
+    HostKeyStatus, Prompter, SecretKind, SecretRequest, Target,
 };
 use veranda_remote::secrets::{self, Secrets};
 use veranda_remote::store::{
@@ -85,6 +85,8 @@ pub struct ServerStats {
     pub disk_mount: Option<String>,
     pub disks: Vec<DiskStat>,
     pub uptime_secs: Option<u64>,
+    /// The read hit the time limit: what came last (disk) may be missing.
+    pub partial: bool,
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -277,20 +279,35 @@ pub async fn term_stats(
         e.stats_busy = true;
         c
     };
-    let r = client::exec(&conn, STATS_CMD, 8).await;
+    let r = client::exec_partial(&conn, STATS_CMD, 8).await;
     let mut g = lock(&state.terms);
     let Some(e) = g.get_mut(&id) else {
         return Ok(None);
     };
     e.stats_busy = false;
-    match r {
-        Ok(out) => {
-            let st = parse_stats(&out.stdout, &mut e.cpu_prev);
-            e.stats = Some((Instant::now(), st.clone()));
-            Ok(Some(st))
+    // the error is a category code the UI translates, never the raw error text
+    let fail = match r {
+        Ok((out, cut)) => {
+            let mut st = parse_stats(&out, &mut e.cpu_prev);
+            st.partial = cut;
+            let empty = st.cpu.is_none()
+                && st.cpus.is_empty()
+                && st.mem_total_kb.is_none()
+                && st.load1.is_none()
+                && st.cores.is_none()
+                && st.uptime_secs.is_none()
+                && st.disks.is_empty();
+            if !empty {
+                e.stats = Some((Instant::now(), st.clone()));
+                return Ok(Some(st));
+            }
+            if cut { "timeout" } else { "nodata" }
         }
-        Err(e2) => Err(e2.to_string()),
-    }
+        Err(ExecFail::Refused) => "refused",
+        Err(ExecFail::Timeout) => "timeout",
+        Err(ExecFail::Other) => "nodata",
+    };
+    Err(fail.to_string())
 }
 
 #[derive(Clone, Serialize)]

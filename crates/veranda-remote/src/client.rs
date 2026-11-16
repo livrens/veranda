@@ -581,6 +581,65 @@ pub async fn exec(conn: &Connection, command: &str, timeout_secs: u64) -> Result
     })
 }
 
+/// Why `exec_partial` got nothing; shown as a category, never as raw error text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecFail {
+    /// The server would not open another channel, or would not run a command on it.
+    Refused,
+    Timeout,
+    Other,
+}
+
+/// `exec` for the stats strip: stdout only, and when time runs out what already arrived is
+/// returned with `true` (cut short). Opening the channel counts against the time limit too.
+pub async fn exec_partial(
+    conn: &Connection,
+    command: &str,
+    timeout_secs: u64,
+) -> std::result::Result<(String, bool), ExecFail> {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_secs.max(1));
+    let open = async {
+        let ch = conn.open_session().await?;
+        ch.exec(true, command).await?;
+        Ok::<_, anyhow::Error>(ch)
+    };
+    let mut ch = match tokio::time::timeout_at(deadline, open).await {
+        Ok(Ok(ch)) => ch,
+        Ok(Err(e)) => {
+            return Err(match e.downcast_ref::<russh::Error>() {
+                Some(russh::Error::ChannelOpenFailure(_)) => ExecFail::Refused,
+                _ => ExecFail::Other,
+            });
+        }
+        Err(_) => return Err(ExecFail::Timeout),
+    };
+    let mut out = Vec::new();
+    let mut cut = false;
+    loop {
+        match tokio::time::timeout_at(deadline, ch.wait()).await {
+            Ok(Some(ChannelMsg::Data { data })) => out.extend_from_slice(&data),
+            Ok(Some(ChannelMsg::Failure)) => {
+                let _ = ch.close().await;
+                return Err(ExecFail::Refused);
+            }
+            Ok(Some(ChannelMsg::Close)) | Ok(None) => break,
+            Ok(Some(_)) => {}
+            Err(_) => {
+                let _ = ch.close().await;
+                // whole lines only: half a number would be read as a wrong figure
+                let whole = out.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+                out.truncate(whole);
+                if out.is_empty() {
+                    return Err(ExecFail::Timeout);
+                }
+                cut = true;
+                break;
+            }
+        }
+    }
+    Ok((String::from_utf8_lossy(&out).into_owned(), cut))
+}
+
 /// `uname -sr` (or Windows' `ver`) for the host list; empty when unknown.
 pub async fn detect_os(conn: &Connection) -> String {
     match exec(conn, "uname -sr 2>/dev/null || ver", 10).await {

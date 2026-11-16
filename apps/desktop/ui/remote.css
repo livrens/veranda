@@ -248,6 +248,8 @@ textarea.editor { width: 100%; min-height: 320px; }
 .tsc.up { margin-left: auto; }
 /* figures that have not been refreshed for a while (failed reads, a silent link): dimmed */
 .term-stats.stale .tsc { opacity: .5; }
+/* one line instead of tiles when no reading could be taken */
+.term-stats .tsn { align-self: center; font-size: 11px; line-height: 1.6; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- narrow terminal stage: the snippets panel floats over the terminal instead of
    squeezing it, and the bar keeps only what fits ---------- */

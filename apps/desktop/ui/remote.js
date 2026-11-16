@@ -466,6 +466,11 @@
   const STATS_EVERY = 5000, STATS_STALE = STATS_EVERY * 2.5;
   const statsStale = (x) => Date.now() - (x.statsAt || 0) > STATS_STALE;
   const dimIfStale = (x) => { if (x.stats && !x.statsDim && statsStale(x)) renderStats(x); };
+  /* Three reads in a row that failed or ran out of time: ask once a minute instead, so a
+     struggling server is left alone; the first whole reading brings the 5 s pace back. */
+  const STATS_SLOW = 60000, STATS_FAILS = 3;
+  // the backend sends a category code only; anything unknown reads as "no data"
+  const statsErrText = (x) => t({ refused: "rm.statsErrRefused", timeout: "rm.statsErrTimeout" }[x.statsErr] || "rm.statsErrNoData");
   // sizes the way htop prints them (971M / 1.92G), spelled out a little
   const fmtG = (kb) => kb >= 1024 * 1024 ? `${(kb / 1024 / 1024).toFixed(kb >= 100 * 1024 * 1024 ? 0 : kb >= 10 * 1024 * 1024 ? 1 : 2)} GB` : `${Math.round(kb / 1024)} MB`;
   const fmtUp = (s) => s >= 86400 ? `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h` : s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.floor(s / 60)}m`;
@@ -495,14 +500,15 @@
   function renderStats(x) {
     const box = $(".term-stats", x.el); if (!box) return;
     const st = x.stats;
-    const show = statsOn() && x.info?.kind !== "local" && !x.closed && !!st;
+    const show = statsOn() && x.info?.kind !== "local" && !x.closed && (!!st || !!x.statsErr);
     const wasHidden = box.classList.contains("hidden");
     box.classList.toggle("hidden", !show);
     // the strip changes the height left for the terminal: recount rows or the bottom lines
     // (the prompt) end up below the edge
     if (wasHidden === show) requestAnimationFrame(() => { try { x.fit.fit(); x.term.scrollToBottom(); } catch (e) {} });
     if (!show) return;
-    const stale = x.statsDim = statsStale(x), staleT = t("rm.statsStale");
+    if (!st) { box.classList.remove("stale"); box.title = t("rm.statsHint"); box.innerHTML = `<span class="tsn">${esc(statsErrText(x))}</span>`; return; }
+    const stale = x.statsDim = statsStale(x), staleT = t("rm.statsStale") + (x.statsErr ? `\n${statsErrText(x)}` : "");
     box.classList.toggle("stale", stale);
     box.title = `${stale ? staleT + "\n" : ""}${t("rm.statsHint")}\n${t("rm.statsSourceNote")}`;
     const of = t("rm.statsOf");
@@ -522,7 +528,7 @@
       + tile("mem", "RAM", memPct, st.mem_total_kb ? `${fmtG(st.mem_used_kb)}` : "—", st.mem_total_kb ? `/ ${fmtG(st.mem_total_kb)}` : "", memT,
         st.mem_total_kb ? [{ pct: memPct }, { pct: cachePct, cls: "cache" }] : null)
       + (swapPct != null ? tile("swap", "Swap", swapPct, fmtG(st.swap_used_kb), `/ ${fmtG(st.swap_total_kb)}`, `${t("rm.statsUsed")}: ${fmtG(st.swap_used_kb)} ${of} ${fmtG(st.swap_total_kb)} (${swapPct.toFixed(0)}%)`) : "")
-      + tile("disk", "Disk", diskPct, st.disk_total_kb ? `${diskPct.toFixed(0)}%` : "—", st.disk_total_kb ? `${st.disk_mount || "/"} · ${fmtG(st.disk_avail_kb || 0)} ${t("rm.statsFree")}` : "", diskTitle(st))
+      + tile("disk", "Disk", diskPct, st.disk_total_kb ? `${diskPct.toFixed(0)}%` : "—", st.disk_total_kb ? `${st.disk_mount || "/"} · ${fmtG(st.disk_avail_kb || 0)} ${t("rm.statsFree")}` : "", diskTitle(st) || (st.partial ? t("rm.statsPartial") : ""))
       + (st.load1 != null ? tile("load", t("rm.statsLoad"), loadPct, st.load1.toFixed(2), `${(st.load5 ?? 0).toFixed(2)} · ${(st.load15 ?? 0).toFixed(2)}`, loadT) : "")
       + (st.procs_total != null ? tile("tasks", t("rm.statsTasks"), null, String(st.procs_total), st.procs_running != null ? `${st.procs_running} ${t("rm.statsRunning")}` : "", t("rm.statsTasksNote")) : "")
       + (st.uptime_secs ? tile("up", t("rm.statsUp"), null, fmtUp(st.uptime_secs), "", t("rm.statsUpNote")) : "");
@@ -533,12 +539,18 @@
     const x = R.terms.get(R.active);
     if (!x || x.closed || x.info?.kind === "local") return;
     if (!statsOn() || document.visibilityState !== "visible" || !$("#tab-terminal").classList.contains("active")) return;
-    if (x.info?.state !== "connected" || x.statsBusy) { dimIfStale(x); return; }
-    x.statsBusy = true;
+    const slow = (x.statsFails || 0) >= STATS_FAILS && Date.now() - (x.statsTried || 0) < STATS_SLOW - 1000;
+    if (x.info?.state !== "connected" || x.statsBusy || slow) { dimIfStale(x); return; }
+    x.statsBusy = true; x.statsTried = Date.now();
     try {
       const st = await invoke("term_stats", { id: x.id });
-      if (st) { x.stats = st; x.statsAt = Date.now(); renderStats(x); if (st.cpu == null && !force) setTimeout(() => pollStats(true), 3000); }
-    } catch (e) { /* a server without /proc or a dropped channel: keep the last values */ }
+      if (st) {
+        x.stats = st; x.statsAt = Date.now(); x.statsErr = "";
+        // the forced re-read gets the cached answer: not an attempt of its own
+        if (!force) x.statsFails = st.partial ? (x.statsFails || 0) + 1 : 0;
+        renderStats(x); if (st.cpu == null && !force) setTimeout(() => pollStats(true), 3000);
+      }
+    } catch (e) { x.statsErr = String(e); x.statsFails = (x.statsFails || 0) + 1; renderStats(x); } // last values stay, dimmed once stale
     finally { x.statsBusy = false; dimIfStale(x); }
   }
   function scheduleStats() { clearInterval(statsTimer); statsTimer = setInterval(() => pollStats(false), STATS_EVERY); setTimeout(() => pollStats(false), 400); }
@@ -775,7 +787,7 @@
   listen("term-state", (ev) => {
     const x = R.terms.get(ev.payload.id); if (!x) return;
     x.info = { ...x.info, ...ev.payload, message: hideAddr(ev.payload.message, termHost(x)) };
-    if (ev.payload.state === "connected") scheduleStats();
+    if (ev.payload.state === "connected") { x.statsFails = 0; scheduleStats(); }
     if (ev.payload.state === "closed" || ev.payload.state === "error") {
       if (!x.closed) x.term.write(`\r\n\x1b[2m[${t("rm.sessionEnded")}${x.info.message ? ": " + x.info.message : ""}] ${t("rm.pressReconnect")}\x1b[0m\r\n`);
       x.closed = true;
