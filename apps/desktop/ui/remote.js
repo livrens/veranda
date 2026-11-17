@@ -71,6 +71,9 @@
     if (kind === "sftp") return hostById(R.sftpPending) || null;
     return null;
   };
+  // the backend answers some refusals with a text key (`rm.…`) so they show in the UI language
+  const failCode = (e) => { const m = typeof e === "string" ? e : e?.message || String(e); fail(/^rm\.\w+$/.test(m) ? t(m) : m); };
+  const isPw = (s) => s?.kind === "password";
   const failHost = (e, host) => fail(hideAddr(typeof e === "string" ? e : e?.message || String(e), host));
   const newId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
   const fmtSize = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`;
@@ -153,6 +156,36 @@
     sel.value = current || "";
     if (sel.value !== (current || "")) sel.value = "";
   }
+  /* Startup steps of the host being edited: { kind: "snippet", id } or { kind: "sudo_password" }. The password
+     itself never reaches the UI; the backend fetches it from the credential store when a prompt shows up. */
+  let hostSteps = [];
+  const SUDO_STEP = ":sudo_password";   // not a snippet id (those are hex)
+  function renderHostSteps() {
+    const name = (s) => {
+      if (s.kind === "sudo_password") return t("rm.stepSudo");
+      const sn = R.view.store.snippets.find((x) => x.id === s.id);
+      return !sn ? t("rm.stepGone") : isPw(sn) ? `${sn.label} (${t("rm.snKindPassword")})` : sn.label;
+    };
+    $("#host-startup-list").innerHTML = hostSteps.map((s, i) => `<li><div class="step"><span class="sname">${esc(name(s))}</span>
+      <button type="button" class="icon-btn small" data-step="up" data-i="${i}" title="${t("rm.stepUp")}" ${i ? "" : "disabled"}>${ICONS.up}</button>
+      <button type="button" class="icon-btn small" data-step="down" data-i="${i}" title="${t("rm.stepDown")}" ${i < hostSteps.length - 1 ? "" : "disabled"}><i class="ic ic-flip">${ICONS.up}</i></button>
+      <button type="button" class="icon-btn small" data-step="remove" data-i="${i}" title="${t("btn.remove")}">${ICONS.trash}</button></div></li>`).join("");
+    // one sudo answer per connection
+    const sudo = $(`#host-startup-add option[value="${SUDO_STEP}"]`);
+    if (sudo) sudo.disabled = hostSteps.some((s) => s.kind === "sudo_password");
+  }
+  $("#host-startup-add").onchange = (ev) => {
+    const v = ev.target.value; if (!v) return;
+    hostSteps.push(v === SUDO_STEP ? { kind: "sudo_password" } : { kind: "snippet", id: v });
+    ev.target.value = ""; renderHostSteps();
+  };
+  $("#host-startup-list").onclick = (ev) => {
+    const b = ev.target.closest("[data-step]"); if (!b) return;
+    const i = Number(b.dataset.i), j = b.dataset.step === "up" ? i - 1 : i + 1;
+    if (b.dataset.step === "remove") hostSteps.splice(i, 1);
+    else if (hostSteps[j]) [hostSteps[i], hostSteps[j]] = [hostSteps[j], hostSteps[i]];
+    renderHostSteps();
+  };
   function openHostDialog(h) {
     const f = $("#form-host"), st = R.view.store;
     f.reset();
@@ -175,7 +208,9 @@
     fillSelect(f.elements.key_id, st.keys.map((k) => [k.id, k.label]), h?.key_id, "—");
     fillSelect(f.elements.identity_id, st.identities.map((i) => [i.id, `${i.label} (${i.username})`]), h?.identity_id, "—");
     fillSelect(f.elements.jump_host_id, st.hosts.filter((x) => x.id !== h?.id).map((x) => [x.id, x.label]), h?.jump_host_id, t("rm.noJump"));
-    fillSelect(f.elements.startup_snippet_id, st.snippets.map((s) => [s.id, s.label]), h?.startup_snippet_id, "—");
+    hostSteps = (h?.startup_steps || []).map((s) => ({ ...s }));
+    fillSelect($("#host-startup-add"), [[SUDO_STEP, t("rm.stepSudo")], ...st.snippets.map((s) => [s.id, isPw(s) ? `${s.label} (${t("rm.snKindPassword")})` : s.label])], "", t("rm.addStep"));
+    renderHostSteps();
     $("#host-colors").innerHTML = COLORS.map((c) => `<button type="button" class="swatch ${(h?.color || "") === c ? "on" : ""}" data-color="${c}" style="${c ? `background:${c}` : ""}" title="${c || "none"}"></button>`).join("");
     applyAuthRows();
     checkHostLabel();
@@ -224,7 +259,7 @@
       id: e.id.value, label: e.label.value.trim(), address: e.address.value.trim(), port: Number(e.port.value) || 22,
       username: e.username.value.trim(), group_id: e.group_id.value || null, auth: e.auth.value,
       key_id: e.key_id.value || null, identity_id: e.identity_id.value || null, jump_host_id: e.jump_host_id.value || null,
-      startup_snippet_id: e.startup_snippet_id.value || null, tags: e.tags.value.split(",").map((x) => x.trim()).filter(Boolean),
+      startup_steps: hostSteps, tags: e.tags.value.split(",").map((x) => x.trim()).filter(Boolean),
       env: e.env.value.split(",").map((x) => x.trim()).filter((x) => x.includes("=")), notes: e.notes.value,
       keep_alive: e.keep_alive.checked, agent_forwarding: e.agent_forwarding.checked, color: e.color.value,
       has_password: existing?.has_password || false, os: existing?.os || "", created_at: existing?.created_at || 0, last_connected: existing?.last_connected || 0,
@@ -474,6 +509,13 @@
   // sizes the way htop prints them (971M / 1.92G), spelled out a little
   const fmtG = (kb) => kb >= 1024 * 1024 ? `${(kb / 1024 / 1024).toFixed(kb >= 100 * 1024 * 1024 ? 0 : kb >= 10 * 1024 * 1024 ? 1 : 2)} GB` : `${Math.round(kb / 1024)} MB`;
   const fmtUp = (s) => s >= 86400 ? `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h` : s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.floor(s / 60)}m`;
+  // every percentage with one decimal, in the UI language (51.4% / 51,4%)
+  const pctFmt = {};
+  const fmtPct = (p) => {
+    const l = document.documentElement.lang === "id" ? "id" : "en";
+    pctFmt[l] ??= new Intl.NumberFormat(l, { minimumFractionDigits: 1, maximumFractionDigits: 1, useGrouping: false });
+    return p == null || !isFinite(p) ? "—" : `${pctFmt[l].format(p)}%`;
+  };
   const lvlOf = (pct) => pct == null ? "" : pct >= 90 ? "bad" : pct >= 70 ? "warn" : "";
   const clamp = (pct) => pct == null ? 0 : Math.max(0, Math.min(100, pct));
   /* One tile: label, big figure, dim detail, a thin bar underneath (optionally two segments:
@@ -482,17 +524,18 @@
   function tile(cls, label, pct, value, detail, title, segs, cores) {
     const bar = pct == null && !segs ? "" : `<i class="tsb">${segs ? segs.map((s) => `<s class="${s.cls || ""}" style="width:${clamp(s.pct)}%"></s>`).join("") : `<s style="width:${clamp(pct)}%"></s>`}</i>`;
     const mini = cores?.length ? `<span class="tsk">${cores.map((c) => `<s class="${lvlOf(c)}" style="--h:${clamp(c)}%"></s>`).join("")}</span>` : "";
-    return `<span class="tsc ${cls} ${lvlOf(pct)}" title="${esc(title || "")}"><span class="tsh"><b>${label}</b><span class="tsv">${esc(value)}</span>${detail ? `<span class="tsd">${esc(detail)}</span>` : ""}${mini}</span>${bar}</span>`;
+    // a full cache is healthy: never coloured as a warning
+    return `<span class="tsc ${cls} ${cls === "cache" ? "" : lvlOf(pct)}" title="${esc(title || "")}"><span class="tsh"><b>${label}</b><span class="tsv">${esc(value)}</span>${detail ? `<span class="tsd">${esc(detail)}</span>` : ""}${mini}</span>${bar}</span>`;
   }
   const dfPct = (d) => d.used_kb + d.avail_kb > 0 ? (d.used_kb / (d.used_kb + d.avail_kb)) * 100 : (d.used_kb / d.total_kb) * 100;
   // Tooltip: every local filesystem with the percentage `df` prints (used / (used + avail))
   // plus the total the way cloud consoles count it (all disks together, used / size).
   function diskTitle(st) {
     if (!st.disks?.length) return "";
-    const lines = st.disks.map((d) => `${d.mount}: ${fmtG(d.used_kb)} ${t("rm.statsOf")} ${fmtG(d.total_kb)} (${Math.round(dfPct(d))}%) · ${fmtG(d.avail_kb)} ${t("rm.statsFree")}`);
+    const lines = st.disks.map((d) => `${d.mount}: ${fmtG(d.used_kb)} ${t("rm.statsOf")} ${fmtG(d.total_kb)} (${fmtPct(dfPct(d))}) · ${fmtG(d.avail_kb)} ${t("rm.statsFree")}`);
     if (st.disks.length > 1) {
       const used = st.disks.reduce((a, d) => a + d.used_kb, 0), total = st.disks.reduce((a, d) => a + d.total_kb, 0);
-      lines.push(`${t("rm.statsAllDisks")}: ${fmtG(used)} ${t("rm.statsOf")} ${fmtG(total)} (${Math.round((used / total) * 100)}%)`);
+      lines.push(`${t("rm.statsAllDisks")}: ${fmtG(used)} ${t("rm.statsOf")} ${fmtG(total)} (${fmtPct((used / total) * 100)})`);
     }
     lines.push(t("rm.statsDiskNote"));
     return lines.join("\n");
@@ -513,25 +556,29 @@
     box.title = `${stale ? staleT + "\n" : ""}${t("rm.statsHint")}\n${t("rm.statsSourceNote")}`;
     const of = t("rm.statsOf");
     const cores = st.cores || st.cpus?.length || 0;
-    const coreT = st.cpus?.length ? `\n${t("rm.statsPerCore")}: ${st.cpus.map((c) => `${c.toFixed(0)}%`).join("  ")}` : "";
-    const cpuT = `${t("rm.statsCpuNote")}${cores ? ` · ${cores} ${t("rm.statsCores")}` : ""}${coreT}\n${t("rm.statsSourceNote")}`;
+    // each tooltip opens with the formula behind the figure
+    const coreT = st.cpus?.length ? `\n${t("rm.statsPerCore")}: ${st.cpus.map(fmtPct).join("  ")}` : "";
+    const cpuT = `${t("rm.statsFxCpu")}\n${t("rm.statsCpuNote")}${cores ? ` · ${cores} ${t("rm.statsCores")}` : ""}${coreT}\n${t("rm.statsSourceNote")}`;
     const memPct = st.mem_total_kb ? (st.mem_used_kb / st.mem_total_kb) * 100 : null;
-    const cachePct = st.mem_total_kb && st.mem_cache_kb != null ? (st.mem_cache_kb / st.mem_total_kb) * 100 : 0;
-    const memT = st.mem_total_kb ? [`${t("rm.statsUsed")}: ${fmtG(st.mem_used_kb)} ${of} ${fmtG(st.mem_total_kb)} (${memPct.toFixed(0)}%)`,
-      st.mem_cache_kb != null ? `${t("rm.statsCache")}: ${fmtG(st.mem_cache_kb)}` : "",
+    const cachePct = st.mem_total_kb && st.mem_cache_kb != null ? (st.mem_cache_kb / st.mem_total_kb) * 100 : null;
+    const memT = st.mem_total_kb ? [t("rm.statsFxMem"), t("rm.statsFxCache"), `${t("rm.statsUsed")}: ${fmtG(st.mem_used_kb)} ${of} ${fmtG(st.mem_total_kb)} (${fmtPct(memPct)})`,
+      cachePct != null ? `${t("rm.statsCache")}: ${fmtG(st.mem_cache_kb)} (${fmtPct(cachePct)})` : "",
       st.mem_avail_kb != null ? `${t("rm.statsAvail")}: ${fmtG(st.mem_avail_kb)}` : "", t("rm.statsMemNote")].filter(Boolean).join("\n") : "";
+    const memD = st.mem_total_kb ? `${fmtG(st.mem_used_kb)} / ${fmtG(st.mem_total_kb)}` : "";
     const swapPct = st.swap_total_kb ? (st.swap_used_kb / st.swap_total_kb) * 100 : null;
+    const swapT = swapPct != null ? `${t("rm.statsFxSwap")}\n${t("rm.statsUsed")}: ${fmtG(st.swap_used_kb)} ${of} ${fmtG(st.swap_total_kb)} (${fmtPct(swapPct)})` : "";
     const diskPct = st.disk_total_kb ? dfPct({ used_kb: st.disk_used_kb, avail_kb: st.disk_avail_kb || 0, total_kb: st.disk_total_kb }) : null;
+    const diskT = `${t("rm.statsFxDisk")}\n${diskTitle(st) || (st.partial ? t("rm.statsPartial") : "")}`.trim();
     const loadPct = st.load1 != null && cores ? (st.load1 / cores) * 100 : null;
-    const loadT = st.load1 != null ? `${t("rm.statsLoadAvg")}${cores ? ` · ${cores} ${t("rm.statsCores")}` : ""}` : "";
-    box.innerHTML = tile("cpu", "CPU", st.cpu, st.cpu == null ? "…" : `${st.cpu.toFixed(0)}%`, "", cpuT, null, st.cpus?.length <= 16 ? st.cpus : null)
-      + tile("mem", "RAM", memPct, st.mem_total_kb ? `${fmtG(st.mem_used_kb)}` : "—", st.mem_total_kb ? `/ ${fmtG(st.mem_total_kb)}` : "", memT,
-        st.mem_total_kb ? [{ pct: memPct }, { pct: cachePct, cls: "cache" }] : null)
-      + (swapPct != null ? tile("swap", "Swap", swapPct, fmtG(st.swap_used_kb), `/ ${fmtG(st.swap_total_kb)}`, `${t("rm.statsUsed")}: ${fmtG(st.swap_used_kb)} ${of} ${fmtG(st.swap_total_kb)} (${swapPct.toFixed(0)}%)`) : "")
-      + tile("disk", "Disk", diskPct, st.disk_total_kb ? `${diskPct.toFixed(0)}%` : "—", st.disk_total_kb ? `${st.disk_mount || "/"} · ${fmtG(st.disk_avail_kb || 0)} ${t("rm.statsFree")}` : "", diskTitle(st) || (st.partial ? t("rm.statsPartial") : ""))
-      + (st.load1 != null ? tile("load", t("rm.statsLoad"), loadPct, st.load1.toFixed(2), `${(st.load5 ?? 0).toFixed(2)} · ${(st.load15 ?? 0).toFixed(2)}`, loadT) : "")
-      + (st.procs_total != null ? tile("tasks", t("rm.statsTasks"), null, String(st.procs_total), st.procs_running != null ? `${st.procs_running} ${t("rm.statsRunning")}` : "", t("rm.statsTasksNote")) : "")
-      + (st.uptime_secs ? tile("up", t("rm.statsUp"), null, fmtUp(st.uptime_secs), "", t("rm.statsUpNote")) : "");
+    const loadT = st.load1 != null ? `${t("rm.statsFxLoad")}\n${t("rm.statsLoadAvg")}: ${st.load1.toFixed(2)} · ${(st.load5 ?? 0).toFixed(2)} · ${(st.load15 ?? 0).toFixed(2)}${cores ? ` · ${cores} ${t("rm.statsCores")}` : ""}` : "";
+    box.innerHTML = tile("cpu", "CPU", st.cpu, st.cpu == null ? "…" : fmtPct(st.cpu), "", cpuT, null, st.cpus?.length <= 16 ? st.cpus : null)
+      + tile("mem", "RAM", memPct, fmtPct(memPct), memD, memT, st.mem_total_kb ? [{ pct: memPct }, { pct: cachePct ?? 0, cls: "cache" }] : null)
+      + (cachePct != null ? tile("cache", t("rm.statsCacheShort"), cachePct, fmtPct(cachePct), fmtG(st.mem_cache_kb), memT) : "")
+      + (swapPct != null ? tile("swap", "Swap", swapPct, fmtPct(swapPct), `${fmtG(st.swap_used_kb)} / ${fmtG(st.swap_total_kb)}`, swapT) : "")
+      + tile("disk", "Disk", diskPct, fmtPct(diskPct), st.disk_total_kb ? `${st.disk_mount || "/"} · ${fmtG(st.disk_avail_kb || 0)} ${t("rm.statsFree")}` : "", diskT)
+      + (st.load1 != null ? tile("load", t("rm.statsLoad"), loadPct, loadPct != null ? fmtPct(loadPct) : st.load1.toFixed(2), loadPct != null ? `${st.load1.toFixed(2)} / ${cores}` : "", loadT) : "")
+      + (st.procs_total != null ? tile("tasks", t("rm.statsTasks"), null, String(st.procs_total), st.procs_running != null ? `${st.procs_running} ${t("rm.statsRunning")}` : "", `${t("rm.statsFxTasks")}\n${t("rm.statsTasksNote")}`) : "")
+      + (st.uptime_secs ? tile("up", t("rm.statsUp"), null, fmtUp(st.uptime_secs), "", `${t("rm.statsFxUp")}\n${t("rm.statsUpNote")}`) : "");
     if (stale) for (const el of box.children) el.title = el.title ? `${staleT}\n${el.title}` : staleT;
   }
   let statsTimer = null;
@@ -720,7 +767,7 @@
     if (lockState() === "locked") { side.innerHTML = head + lockScreen(true); return; }
     const snippets = R.view.store.snippets;
     const folders = [...new Set(snippets.map((s) => s.folder || ""))].sort((a, b) => (a === "") - (b === "") || a.localeCompare(b));
-    const list = snippets.length ? folders.map((fo) => `<div class="ts-group" data-folder="${esc(fo)}">${fo ? `<div class="ts-folder">${esc(fo)}</div>` : ""}${snippets.filter((s) => (s.folder || "") === fo).map((s) => `<button class="snip-item" data-side-send="${esc(s.id)}" data-q="${esc((s.folder + " " + s.label).toLowerCase())}" title="${t("rm.sendToTerminal")}">${ICONS.snippet}<span class="nm">${esc(s.label)}</span><span class="go">${ICONS.send}</span></button>`).join("")}</div>`).join("")
+    const list = snippets.length ? folders.map((fo) => `<div class="ts-group" data-folder="${esc(fo)}">${fo ? `<div class="ts-folder">${esc(fo)}</div>` : ""}${snippets.filter((s) => (s.folder || "") === fo).map((s) => `<button class="snip-item" data-side-send="${esc(s.id)}" data-q="${esc((s.folder + " " + s.label).toLowerCase())}" title="${t(isPw(s) ? "rm.snSendHint" : "rm.sendToTerminal")}">${isPw(s) ? ICONS.lock : ICONS.snippet}<span class="nm">${esc(s.label)}</span>${isPw(s) ? `<span class="pill pw">${t("rm.snKindPassword")}</span>` : ""}<span class="go">${ICONS.send}</span></button>`).join("")}</div>`).join("")
       : `<div class="empty small">${t("rm.noSnippets")}</div>`;
     side.innerHTML = head + `<div class="ts-search">${ICONS.search}<input id="snip-side-q" placeholder="${t("rm.searchSnippets")}" value="${esc(R.side.q)}"></div><div class="ts-body">${list}</div>
       <label class="ts-foot check"><input type="checkbox" id="snip-side-enter" ${R.side.enter ? "checked" : ""}><span>${t("rm.sendEnter")}</span></label>`;
@@ -738,7 +785,7 @@
     const x = R.terms.get(R.active);
     if (!x || x.closed) { toast(t("rm.noTerminal"), "info"); return false; }
     try { await invoke("term_send_snippet", { id: x.id, snippetId: id, enter: R.side.enter }); }
-    catch (e) { fail(e); if (/locked/i.test(String(e?.message || e))) refresh(); return false; }
+    catch (e) { failCode(e); if (/locked/i.test(String(e?.message || e))) refresh(); return false; }
     if (fromPage) showTab("terminal");
     x.term.focus();
     return true;
@@ -795,8 +842,8 @@
   });
   listen("term-exit", (ev) => { const x = R.terms.get(ev.payload.id); if (x) { x.closed = true; renderTabs(); } });
   listen("remote-notice", (ev) => {
-    const x = R.terms.get(ev.payload.session);
-    if (x) x.term.write(`\x1b[2m${String(ev.payload.text).replace(/\r?\n/g, "\r\n")}\x1b[0m\r\n`); else toast(ev.payload.text, "info");
+    const x = R.terms.get(ev.payload.session), text = ev.payload.code ? t(ev.payload.code) : ev.payload.text;
+    if (x) x.term.write(`\x1b[2m${String(text).replace(/\r?\n/g, "\r\n")}\x1b[0m\r\n`); else toast(text, "info");
   });
   listen("remote-changed", () => refresh());
 
@@ -1113,11 +1160,11 @@
     const canSend = !!(R.active && R.terms.get(R.active) && !R.terms.get(R.active).closed);
     const tip = lock === "off" ? `<div class="card snip-lock-tip">${ICONS.lock}<div><b>${t("rm.lockTipTitle")}</b><p>${t("rm.lockTip")}</p></div><button class="btn small" id="btn-snip-pass-tip">${ICONS.key}<span>${t("rm.setPassword")}</span></button></div>` : "";
     $("#snip-list").innerHTML = tip + (folders.map((fo) => `${fo ? `<h3 class="rm-folder">${ICONS.group}${esc(fo)}</h3>` : ""}<div class="list">${snippets.filter((s) => (s.folder || "") === fo).map((s) => `<div class="row" data-snip="${esc(s.id)}">
-        <div class="ico">${ICONS.snippet}</div>
-        <div><div class="name">${esc(s.label)}</div><div class="meta"><span class="pill">${((n) => n === 1 ? t("rm.line") : t("rm.lines", { n }))((s.script.match(/\n/g) || []).length + 1)}</span>${lock !== "off" ? `<span class="pill ok">${ICONS.lock}${t("rm.encrypted")}</span>` : ""}</div></div>
-        <div class="act"><button class="btn small ${canSend ? "primary" : ""}" data-snip-send="${esc(s.id)}" ${canSend ? "" : "disabled"} title="${t("rm.sendToTerminal")}">${ICONS.send}<span>${t("rm.send")}</span></button>
-          <button class="btn small" data-snip-run="${esc(s.id)}">${ICONS.play}<span>${t("rm.runOnHosts")}</span></button>
-          <button class="icon-btn" data-snip-copy="${esc(s.id)}" title="${t("msg.copied")}">${ICONS.copy}</button>
+        <div class="ico">${isPw(s) ? ICONS.lock : ICONS.snippet}</div>
+        <div><div class="name">${esc(s.label)}</div><div class="meta">${isPw(s) ? `<span class="pill pw">${ICONS.lock}${t("rm.snKindPassword")}</span>` : `<span class="pill">${((n) => n === 1 ? t("rm.line") : t("rm.lines", { n }))((s.script.match(/\n/g) || []).length + 1)}</span>`}${lock !== "off" ? `<span class="pill ok">${ICONS.lock}${t("rm.encrypted")}</span>` : ""}</div></div>
+        <div class="act"><button class="btn small ${canSend ? "primary" : ""}" data-snip-send="${esc(s.id)}" ${canSend ? "" : "disabled"} title="${t(isPw(s) ? "rm.snSendHint" : "rm.sendToTerminal")}">${ICONS.send}<span>${t("rm.send")}</span></button>
+          ${isPw(s) ? "" : `<button class="btn small" data-snip-run="${esc(s.id)}">${ICONS.play}<span>${t("rm.runOnHosts")}</span></button>
+          <button class="icon-btn" data-snip-copy="${esc(s.id)}" title="${t("msg.copied")}">${ICONS.copy}</button>`}
           <button class="icon-btn" data-snip-edit="${esc(s.id)}" title="${t("btn.edit")}">${ICONS.edit}</button>
           <button class="icon-btn danger" data-snip-delete="${esc(s.id)}" title="${t("btn.remove")}">${ICONS.trash}</button></div></div>`).join("")}</div>`).join("")
       || `<div class="empty">${ICONS.snippet}<span>${t("rm.noSnippets")}</span></div>`);
@@ -1145,21 +1192,39 @@
     const e = $("#form-snip-lock").elements;
     if (!e.current.value) { toast(t("rm.currentNeeded"), "bad"); e.current.focus(); return; }
     if (!(await askConfirm(t("rm.confirmRemovePw"), t("rm.removePassword")))) return;
-    try { await invoke("snippet_lock_set", { current: e.current.value, new: "", autoLockMinutes: 0 }); $("#dlg-snip-lock").close(); toast(t("rm.pwRemoved"), "ok"); } catch (x) { fail(x); }
+    try { await invoke("snippet_lock_set", { current: e.current.value, new: "", autoLockMinutes: 0 }); $("#dlg-snip-lock").close(); toast(t("rm.pwRemoved"), "ok"); } catch (x) { failCode(x); }
     $("#form-snip-lock").reset(); refresh();
   };
   $("#btn-snip-pass").onclick = openSnipLockDialog;
   $("#btn-snip-lock-now").onclick = async () => { try { await invoke("snippet_lock_now"); toast(t("rm.locked"), "ok"); } catch (x) { fail(x); } refresh(); };
+  /* Password snippets: the body never comes back from the backend, so the field starts empty
+     and an empty field keeps the saved password. */
+  function applySnipKind() {
+    const f = $("#form-snippet"), pw = f.elements.kind.value === "password";
+    $$("[data-sn]", f).forEach((el) => el.classList.toggle("hidden", el.dataset.sn !== (pw ? "password" : "command")));
+    f.elements.secret.placeholder = pw && f.dataset.savedPw === "1" ? t("rm.snPwKeep") : "";
+  }
   function openSnippetDialog(s) {
     const f = $("#form-snippet"); f.reset();
-    f.elements.id.value = s?.id || ""; f.elements.label.value = s?.label || ""; f.elements.folder.value = s?.folder || ""; f.elements.script.value = s?.script || "";
+    f.elements.id.value = s?.id || ""; f.elements.label.value = s?.label || ""; f.elements.folder.value = s?.folder || "";
+    f.elements.kind.value = isPw(s) ? "password" : "command";
+    f.elements.script.value = isPw(s) ? "" : s?.script || "";
+    f.dataset.savedPw = isPw(s) ? "1" : "";
+    applySnipKind();
     $("#dlg-snippet").showModal(); f.elements.label.focus();
   }
+  $("#form-snippet").elements.kind.onchange = applySnipKind;
+  for (const ev of ["copy", "cut", "dragstart", "contextmenu"]) $("#form-snippet").elements.secret.addEventListener(ev, (e) => e.preventDefault());
   $("#form-snippet").onsubmit = async (ev) => {
-    ev.preventDefault(); const e = ev.target.elements;
-    try { await invoke("remote_save_snippet", { snippet: { id: e.id.value, label: e.label.value.trim(), folder: e.folder.value.trim(), script: e.script.value } }); $("#dlg-snippet").close(); } catch (x) { fail(x); }
+    ev.preventDefault(); const e = ev.target.elements, pw = e.kind.value === "password";
+    if (pw && lockState() === "off") { toast(t("rm.snNeedsLock"), "bad"); return; }
+    const snippet = { id: e.id.value, label: e.label.value.trim(), folder: e.folder.value.trim(), kind: pw ? "password" : "command", script: pw ? e.secret.value : e.script.value };
+    e.secret.value = "";
+    try { await invoke("remote_save_snippet", { snippet }); $("#dlg-snippet").close(); } catch (x) { failCode(x); }
+    snippet.script = "";
     refresh();
   };
+  $("#dlg-snippet").addEventListener("close", () => { $("#form-snippet").elements.secret.value = ""; });
   $("#btn-snip-new").onclick = () => openSnippetDialog(null);
   function pickHosts(title, preselect) {
     return new Promise((resolve) => {
@@ -1178,6 +1243,7 @@
     const sid = b.dataset.snipSend || b.dataset.snipRun || b.dataset.snipCopy || b.dataset.snipEdit || b.dataset.snipDelete;
     const s = R.view.store.snippets.find((x) => x.id === sid); if (!s) return;
     if (b.dataset.snipSend) sendSnippet(s.id, true);
+    else if (isPw(s) && (b.dataset.snipCopy || b.dataset.snipRun)) return;
     else if (b.dataset.snipCopy) { await navigator.clipboard.writeText(s.script); toast(t("msg.copied"), "ok"); }
     else if (b.dataset.snipEdit) openSnippetDialog(s);
     else if (b.dataset.snipDelete) { if (await askConfirm(t("rm.confirmDeleteSnippet", { name: s.label }))) { try { await invoke("remote_delete_snippet", { id: s.id }); } catch (x) { fail(x); } refresh(); } }
@@ -1186,7 +1252,7 @@
       const out = $("#snip-output"); out.classList.remove("hidden");
       out.innerHTML = `<div class="activity-head"><span>${esc(s.label)}</span><span class="state busy">${ICONS.spinner}${t("rm.running", { n: ids.length })}</span></div>`;
       try {
-        const results = await invoke("snippet_run", { snippetId: s.id, script: null, hostIds: ids });
+        const results = await invoke("snippet_run", { snippetId: s.id, script: null, hostIds: ids }).catch((x) => { throw new Error(/^rm\.\w+$/.test(String(x)) ? t(String(x)) : x?.message || String(x)); });
         out.innerHTML = `<div class="activity-head"><span>${esc(s.label)}</span><button class="btn small ghost" id="btn-snip-out-close">${t("btn.close")}</button></div>` + results.map((r) => `<div class="snip-result ${r.error || (r.exit && r.exit !== 0) ? "bad" : "ok"}"><div class="srh"><b>${esc(r.label)}</b><span class="pill">${r.error ? esc(hideAddr(r.error, hostById(r.host_id))) : `exit ${r.exit ?? "?"}`}</span></div><pre>${esc((r.stdout + (r.stderr ? "\n" + r.stderr : "")).trim() || "—")}</pre></div>`).join("");
         $("#btn-snip-out-close").onclick = () => out.classList.add("hidden");
       } catch (x) { fail(x); out.classList.add("hidden"); }

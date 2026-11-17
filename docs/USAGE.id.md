@@ -196,8 +196,21 @@ Klik **New host**: label, alamat, port, nama pengguna, dan cara masuk (**Auth**)
 | Ask when connecting | Tanpa kredensial tersimpan; prompt dari server ditampilkan |
 
 Opsional: **Group** (host mewarisi identitas grup), **Jump host** (lewat host lain dulu),
-**Startup snippet** (dikirim setelah login), tag, warna, variabel environment, catatan,
+**Startup steps** (dikirim setelah login), tag, warna, variabel environment, catatan,
 keep-alive, dan agent forwarding.
+
+**Startup steps** (Langkah awal) adalah daftar berurutan: pilih snippet atau **Kata sandi sudo**
+untuk menambah langkah, lalu atur urutan atau hapus lewat tombol di barisnya. Langkah pertama
+dikirim begitu shell terbuka, langkah berikutnya setelah terminal diam sekitar 400 ms (paling
+lama 10 detik). Langkah **Kata sandi sudo** menjawab permintaan kata sandi, misalnya setelah
+langkah `sudo -i`, dengan kata sandi yang tersimpan untuk host ini. Kata sandi dikirim satu kali
+dan hanya saat permintaan itu tampil (baris yang diakhiri titik dua dan memuat kata "password"
+atau "sandi"). Bila permintaan tidak muncul dalam 15 detik, langkah dilewati dan langkah
+berikutnya dilanjutkan. Bila permintaan muncul lagi setelah kata sandi dikirim, atau host tidak
+punya kata sandi tersimpan, langkah sisanya dibatalkan dan terminal memberitahukannya. Kata sandi
+dibaca dari penyimpanan kredensial sistem tepat saat itu dan tidak pernah ditulis ke berkas
+pengaturan, snippet, maupun log. Langkah yang snippet-nya tidak dapat dibaca (snippet terkunci
+atau sudah dihapus) membatalkan dirinya dan langkah sesudahnya.
 
 Klik dua kali host untuk membuka terminal. Tombol di baris: terminal, SFTP, ubah, duplikat, hapus.
 **Quick connect** (`user@host:22`) menghubungkan tanpa menyimpan. **Import** membaca

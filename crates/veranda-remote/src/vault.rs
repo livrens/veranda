@@ -40,6 +40,25 @@ pub struct Key {
     raw: [u8; 32],
 }
 
+/// The snippet lock as one operation sees it.
+#[derive(Clone, Copy)]
+pub enum Lock<'a> {
+    /// No snippet password is set: bodies are stored as plain text.
+    Off,
+    Locked,
+    Open(&'a Key),
+}
+
+/// Overwrite a secret before its buffer is freed.
+pub fn forget(text: String) {
+    wipe(&mut text.into_bytes());
+}
+
+fn wipe(buf: &mut [u8]) {
+    buf.fill(0);
+    std::hint::black_box(buf);
+}
+
 impl Drop for Key {
     fn drop(&mut self) {
         for b in self.raw.iter_mut() {
@@ -193,8 +212,14 @@ impl Key {
         let plain = self
             .aead()?
             .open_in_place(nonce, aead::Aad::empty(), rest)
-            .map_err(|_| anyhow::anyhow!("wrong password or damaged snippet"))?;
-        String::from_utf8(plain.to_vec()).context("snippet is not UTF-8")
+            .map_err(|_| anyhow::anyhow!("wrong password or damaged snippet"))?
+            .to_vec();
+        // the buffer decrypted in place is not left behind
+        wipe(&mut data);
+        String::from_utf8(plain).map_err(|e| {
+            wipe(&mut e.into_bytes());
+            anyhow::anyhow!("snippet is not UTF-8")
+        })
     }
 }
 

@@ -24,6 +24,7 @@ use veranda_remote::client::{
 use veranda_remote::secrets::{self, Secrets};
 use veranda_remote::store::{
     AuthKind, ForwardRule, Group, HistoryEntry, Host, Identity, KeyMeta, Settings, Snippet,
+    SnippetKind, SnippetRefusal, StartupStep,
 };
 use veranda_remote::{Store, forward, import, keys, known_hosts, local, session, sftp, vault};
 
@@ -434,11 +435,14 @@ impl RemoteState {
     }
 
     /// Prepare snippets for the UI: plain text when unlocked, empty when locked, never the
-    /// ciphertext.
+    /// ciphertext. A password snippet is never opened here: the UI gets its kind, not its body.
     fn reveal_snippets(&self, store: &mut Store) {
         self.with_key(|k| {
             for s in &mut store.snippets {
-                if !s.script_enc.is_empty() {
+                if s.kind == SnippetKind::Password {
+                    s.script.clear();
+                    s.script_enc.clear();
+                } else if !s.script_enc.is_empty() {
                     s.script = k
                         .and_then(|k| k.open(&s.script_enc).ok())
                         .unwrap_or_default();
@@ -1108,28 +1112,45 @@ pub fn remote_save_snippet(app: AppHandle, mut snippet: Snippet) -> CmdResult<St
         return Err("name is required".into());
     }
     let rs = app.state::<RemoteState>();
-    if vault::path(&core.layout).is_file() {
-        // the lock is on: only the sealed body goes to disk
-        let sealed = rs
-            .with_key(|k| match k {
-                Some(k) => k.seal(&snippet.script),
-                None => anyhow::bail!("snippets are locked; unlock them first"),
-            })
-            .map_err(err)?;
-        snippet.script_enc = sealed;
-        snippet.script.clear();
-    } else {
-        snippet.script_enc.clear();
+    let lock_on = vault::path(&core.layout).is_file();
+    rs.with_store(&core, |s| {
+        // with the lock on only the sealed body goes to disk
+        let ready = rs.with_key(|k| {
+            let lock = match k {
+                _ if !lock_on => vault::Lock::Off,
+                Some(k) => vault::Lock::Open(k),
+                None => vault::Lock::Locked,
+            };
+            snippet.prepare(s.snippet(&snippet.id), lock)
+        });
+        match ready {
+            Ok(()) => (true, Ok(s.upsert_snippet(snippet))),
+            Err(e) => (false, Err(e)),
+        }
+    })
+    .map_err(err)?
+    .map_err(refusal)
+}
+
+/// The UI text key of a refusal (the UI shows it in its own language); other errors as text.
+fn refusal(e: anyhow::Error) -> String {
+    match e.downcast_ref::<SnippetRefusal>() {
+        Some(SnippetRefusal::NeedsLock) => "rm.snNeedsLock".into(),
+        Some(SnippetRefusal::OneLine) => "rm.snOneLine".into(),
+        Some(SnippetRefusal::NoPassword) => "rm.snNoPassword".into(),
+        Some(SnippetRefusal::NewBody) => "rm.snNewBody".into(),
+        Some(SnippetRefusal::KeepLock) => "rm.snKeepLock".into(),
+        Some(SnippetRefusal::NoRun) => "rm.snNoRun".into(),
+        None => err(e),
     }
-    rs.with_store(&core, |s| (true, s.upsert_snippet(snippet)))
-        .map_err(err)
 }
 
 /* ---------------- snippet lock ---------------- */
 
 /// Set, change or remove the snippet password. `current` is required once a lock exists; an
-/// empty `new` removes the lock and stores the snippets in plain text again. Every snippet body
-/// is re-encrypted with the new key. Returns the new lock state.
+/// empty `new` removes the lock and stores the snippets in plain text again, which is refused
+/// while a password snippet exists. Every snippet body is re-encrypted with the new key.
+/// Returns the new lock state.
 #[tauri::command]
 pub async fn snippet_lock_set(
     app: AppHandle,
@@ -1172,6 +1193,10 @@ pub async fn snippet_lock_set(
             return Ok("off".into());
         }
         rs.with_store(&core, |s| {
+            // a password snippet is never written as plain text
+            if s.has_password_snippet() {
+                return (false, Err(SnippetRefusal::KeepLock.into()));
+            }
             for sn in &mut s.snippets {
                 match plain_of(sn) {
                     Ok(p) => {
@@ -1184,7 +1209,7 @@ pub async fn snippet_lock_set(
             (true, Ok(()))
         })
         .map_err(err)?
-        .map_err(err)?;
+        .map_err(refusal)?;
         vault::LockFile::remove(&core.layout).map_err(err)?;
         rs.set_key(None, 0);
         let _ = app.emit("remote-changed", ());
@@ -1198,7 +1223,12 @@ pub async fn snippet_lock_set(
             .map_err(err)?;
     rs.with_store(&core, |s| {
         for sn in &mut s.snippets {
-            match plain_of(sn).and_then(|p| key.seal(&p)) {
+            let resealed = plain_of(sn).and_then(|p| {
+                let sealed = key.seal(&p);
+                vault::forget(p);
+                sealed
+            });
+            match resealed {
                 Ok(sealed) => {
                     sn.script_enc = sealed;
                     sn.script.clear();
@@ -1255,8 +1285,20 @@ pub fn snippet_lock_now(state: State<'_, RemoteState>) -> CmdResult<()> {
     Ok(())
 }
 
+/// Fetches the body of a password snippet at the moment a prompt asks for it. Carries the
+/// sealed text only; `None` when the lock is closed or the body cannot be opened.
+fn snippet_secret(app: &AppHandle, sealed: String) -> session::SecretSource {
+    let app = app.clone();
+    Box::new(move || {
+        let rs = app.state::<RemoteState>();
+        let secret = rs.with_key(|k| k.and_then(|k| k.open(&sealed).ok()));
+        secret.filter(|p| !p.is_empty())
+    })
+}
+
 /// Type a snippet into terminal `id` (with Enter when `enter`). The body never has to pass
-/// through the UI, so it works the same whether the snippet is stored sealed or plain.
+/// through the UI, so it works the same whether the snippet is stored sealed or plain. A
+/// password snippet goes out only while the terminal shows a password prompt.
 #[tauri::command]
 pub async fn term_send_snippet(
     app: AppHandle,
@@ -1268,6 +1310,21 @@ pub async fn term_send_snippet(
     let rs = app.state::<RemoteState>();
     let store = Store::load(&core.layout).map_err(err)?;
     let snippet = store.snippet(&snippet_id).ok_or("snippet not found")?;
+    if snippet.kind == SnippetKind::Password {
+        if !rs.with_key(|k| k.is_some()) {
+            return Err("snippets are locked; unlock them first".into());
+        }
+        let h = lock(&rs.terms).get(&id).and_then(|e| e.handle.clone());
+        let h = h.ok_or("no connected terminal")?;
+        // the terminal itself checks for an open password prompt; nothing is sent otherwise
+        let source = snippet_secret(&app, snippet.script_enc.clone());
+        return match h.answer_prompt(source, enter).await {
+            session::SecretReply::Sent => Ok(()),
+            session::SecretReply::NotAsked => Err("rm.snNotAsked".into()),
+            session::SecretReply::NoSecret => Err("rm.snUnreadable".into()),
+            session::SecretReply::Failed => Err("no connected terminal".into()),
+        };
+    }
     let mut text = rs.snippet_script(snippet).map_err(err)?;
     while text.ends_with('\n') || text.ends_with('\r') {
         text.pop();
@@ -1615,6 +1672,110 @@ fn pump_terminal(app: AppHandle, id: String, mut rx: mpsc::Receiver<session::Ter
     });
 }
 
+/// A startup message for the terminal; `code` is the UI text key, `text` the fallback.
+fn startup_notice(app: &AppHandle, session: &str, code: &str, text: &str) {
+    let _ = app.emit(
+        "remote-notice",
+        serde_json::json!({ "session": session, "code": code, "text": text }),
+    );
+}
+
+const STARTUP_LOCKED: &str = "startup: a snippet could not be read (unlock snippets first); that step and the ones after it were cancelled";
+
+/// What the shell sends after login. A snippet that cannot be read (locked or deleted) cancels
+/// itself and every step after it. A password step carries no password: only the way to fetch
+/// it (the destination host's saved one, or a password snippet's body) when a prompt is on
+/// screen.
+fn startup_plan(
+    app: &AppHandle,
+    rs: &RemoteState,
+    core: &Veranda,
+    store: &Store,
+    host: &Host,
+    session: &str,
+) -> Option<session::StartupPlan> {
+    let mut steps = Vec::new();
+    // set when a password snippet could not be opened at its prompt (snippets locked meanwhile)
+    let unread = Arc::new(AtomicBool::new(false));
+    let mut sudo_planned = false;
+    for step in &host.startup_steps {
+        match step {
+            StartupStep::Snippet { id } => {
+                let Some(snippet) = store.snippet(id) else {
+                    startup_notice(
+                        app,
+                        session,
+                        "rm.startupNoSnippet",
+                        "startup: a snippet no longer exists; that step and the ones after it were cancelled",
+                    );
+                    break;
+                };
+                if snippet.kind == SnippetKind::Password {
+                    if !rs.with_key(|k| k.is_some()) {
+                        startup_notice(app, session, "rm.startupLocked", STARTUP_LOCKED);
+                        break;
+                    }
+                    // a secret step: opened from the snippet lock only when a prompt asks for it
+                    let source = snippet_secret(app, snippet.script_enc.clone());
+                    let unread = unread.clone();
+                    steps.push(session::ShellStep::Password(Box::new(move || {
+                        let secret = source();
+                        unread.store(secret.is_none(), Ordering::Relaxed);
+                        secret
+                    })));
+                    continue;
+                }
+                match rs.snippet_script(snippet) {
+                    Ok(text) => steps.push(session::ShellStep::Text(text)),
+                    Err(_) => {
+                        startup_notice(app, session, "rm.startupLocked", STARTUP_LOCKED);
+                        break;
+                    }
+                }
+            }
+            // one sudo answer per connection: later sudo steps are dropped
+            StartupStep::SudoPassword if sudo_planned => {}
+            StartupStep::SudoPassword => {
+                sudo_planned = true;
+                // also for hosts that log in with a key but have a saved password
+                let saved = (host.has_password && !host.id.is_empty())
+                    .then(|| (rs.secrets(core), secrets::host_password_key(&host.id)));
+                steps.push(session::ShellStep::Sudo(Box::new(move || {
+                    let (secrets, key) = saved?;
+                    secrets.get(&key).ok().flatten().filter(|p| !p.is_empty())
+                })));
+            }
+        }
+    }
+    if steps.is_empty() {
+        return None;
+    }
+    let (app, session) = (app.clone(), session.to_string());
+    Some(session::StartupPlan {
+        steps,
+        notify: Box::new(move |n| {
+            let (code, text) = match n {
+                session::StartupNotice::NoPrompt => (
+                    "rm.startupNoPrompt",
+                    "startup: no password prompt appeared, so no password was sent; going on with the next step",
+                ),
+                session::StartupNotice::NoPassword if unread.swap(false, Ordering::Relaxed) => {
+                    ("rm.startupLocked", STARTUP_LOCKED)
+                }
+                session::StartupNotice::NoPassword => (
+                    "rm.startupNoPassword",
+                    "startup: a password prompt appeared but this host has no saved password; the remaining steps were cancelled",
+                ),
+                session::StartupNotice::Rejected => (
+                    "rm.startupRejected",
+                    "startup: the password prompt came back after the password was sent; no retry, the remaining steps were cancelled",
+                ),
+            };
+            startup_notice(&app, &session, code, text);
+        }),
+    })
+}
+
 #[tauri::command]
 pub async fn term_open(app: AppHandle, req: OpenTerm) -> CmdResult<SessionInfo> {
     let core = core_of(&app)?;
@@ -1665,22 +1826,7 @@ pub async fn term_open(app: AppHandle, req: OpenTerm) -> CmdResult<SessionInfo> 
             if let Some(e) = lock(&rs.terms).get_mut(&req.id) {
                 e.conn = Some(conn.clone());
             }
-            let startup = match host
-                .startup_snippet_id
-                .as_deref()
-                .and_then(|id| store.snippet(id))
-                .map(|s| rs.snippet_script(s))
-            {
-                Some(Ok(script)) => Some(script),
-                Some(Err(e)) => {
-                    let _ = app.emit(
-                        "remote-notice",
-                        serde_json::json!({ "session": req.id, "text": format!("startup snippet skipped: {e}") }),
-                    );
-                    None
-                }
-                None => None,
-            };
+            let startup = startup_plan(&app, &rs, &core, &store, host, &req.id);
             let handle = session::open_ssh_shell(
                 conn.clone(),
                 session::ShellOptions {
@@ -2077,6 +2223,9 @@ pub async fn snippet_run(
         snippet_id.as_deref().and_then(|id| store.snippet(id)),
         script,
     ) {
+        (Some(s), _) if s.kind == SnippetKind::Password => {
+            return Err(refusal(SnippetRefusal::NoRun.into()));
+        }
         (Some(s), _) => rs.snippet_script(s).map_err(err)?,
         (None, Some(t)) if !t.trim().is_empty() => t,
         _ => return Err("nothing to run".into()),

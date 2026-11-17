@@ -194,8 +194,20 @@ Click **New host**: label, address, port, username and how to log in (**Auth**):
 | Ask when connecting | No stored credential; the server's prompts are shown |
 
 Optional: **Group** (hosts inherit the group's identity), **Jump host** (connect through another
-host first), **Startup snippet** (sent after login), tags, a colour, environment variables sent
+host first), **Startup steps** (sent after login), tags, a colour, environment variables sent
 with the session, notes, keep-alive and agent forwarding.
+
+**Startup steps** is an ordered list: pick a snippet or **sudo password** to add a step, then
+reorder or remove steps with the row buttons. The first step is sent when the shell opens, each
+later one once the terminal has been quiet for about 400 ms (10 s at most). The **sudo
+password** step answers a password prompt, for example after a `sudo -i` step, with the password
+saved for this host. It is sent once and only while a prompt is on screen (a line ending in a
+colon that says "password" or "sandi"). No prompt within 15 s: the step is skipped and the next
+one goes on. Prompt back after the password was sent, or no saved password for the host: the
+remaining steps are cancelled and the terminal says so. The password is read from the system
+credential store at that moment and is never written to the settings file, a snippet or a log.
+A step whose snippet cannot be read (snippets locked, or deleted) cancels itself and the steps
+after it.
 
 Double-click a host to open a terminal. The row buttons open a terminal, SFTP, edit, duplicate
 and delete. **Quick connect** (`user@host:22`) connects without saving. **Import** reads

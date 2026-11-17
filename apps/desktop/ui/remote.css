@@ -35,6 +35,12 @@
 .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface-2); cursor: pointer; padding: 0; }
 .swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--surface); }
 dialog .two.addr { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+/* host dialog: startup steps, lined up with the fields (label column 84px + 10px gap) */
+.startup-steps { margin: 0 0 4px; padding-left: 116px; }
+.startup-steps .step { display: flex; align-items: center; gap: 2px; }
+.startup-steps .sname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+dialog .startup-hint { margin: 0 0 8px 94px; }
+@media (max-width: 560px) { .startup-steps { padding-left: 22px; } dialog .startup-hint { margin-left: 0; } }
 dialog label.block { flex-direction: column; align-items: stretch; }
 dialog label.block > span { width: auto; }
 dialog textarea { flex: 1; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--text); padding: 8px 10px; font: inherit; resize: vertical; min-height: 40px; }
@@ -163,6 +169,10 @@ textarea.editor { width: 100%; min-height: 320px; }
 .snip-item .go svg { width: 13px; height: 13px; }
 .snip-item:hover .go { opacity: .9; }
 .snip-item.sent { background: var(--ok-soft); color: var(--ok); }
+/* password snippets */
+.pill.pw { gap: 4px; background: var(--warn-soft); color: var(--warn); font-family: var(--font); font-weight: 600; }
+.pill.pw svg { width: 12px; height: 12px; }
+.snip-item .pill.pw { height: 18px; padding: 0 6px; font-size: 10.5px; flex: none; }
 .ts-foot { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .ts-body .empty.small { padding: 24px 10px; margin: 6px; }
 /* lock screen (Snippets page and panel) */
@@ -226,20 +236,22 @@ textarea.editor { width: 100%; min-height: 320px; }
 #dlg-prompt h2 { overflow-wrap: anywhere; }
 
 /* ---------- server stats strip (SSH terminals) ---------- */
-.term-stats { display: flex; align-items: stretch; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--line); background: var(--surface-2); color: var(--muted); cursor: pointer; overflow: hidden; white-space: nowrap; user-select: none; }
-/* tile: label + figure on top, hairline bar underneath */
-.tsc { --c: var(--ok); display: inline-flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; padding: 3px 9px 4px; border-radius: 8px; background: color-mix(in srgb, var(--surface) 75%, transparent); border: 1px solid color-mix(in srgb, var(--line) 85%, transparent); transition: border-color .2s ease; }
-.tsc.warn { --c: var(--warn); } .tsc.bad { --c: var(--bad); }
-.tsc.warn, .tsc.bad { border-color: color-mix(in srgb, var(--c) 35%, var(--line)); background: color-mix(in srgb, var(--c) 7%, var(--surface)); }
-.term-stats:hover .tsc { border-color: color-mix(in srgb, var(--c) 45%, var(--line)); }
+/* glassy: a soft tinted backdrop, frosted tiles over it, gradient bars */
+.term-stats { --glass-hi: rgba(255, 255, 255, .55); display: flex; align-items: stretch; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--line); background: linear-gradient(115deg, color-mix(in srgb, var(--accent) 10%, var(--surface-2)), var(--surface-2) 40%, color-mix(in srgb, var(--ok) 9%, var(--surface-2))); color: var(--muted); cursor: pointer; overflow: hidden; white-space: nowrap; user-select: none; }
+:root[data-theme="dark"] .term-stats { --glass-hi: rgba(255, 255, 255, .06); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .term-stats { --glass-hi: rgba(255, 255, 255, .06); } }
+/* tile: label + figure on top, bar underneath; the formula is in its tooltip */
+.tsc { --c: var(--ok); display: inline-flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; padding: 4px 10px 5px; border-radius: 11px; background: color-mix(in srgb, var(--surface) 55%, transparent); -webkit-backdrop-filter: blur(10px) saturate(140%); backdrop-filter: blur(10px) saturate(140%); border: 1px solid color-mix(in srgb, var(--line) 70%, transparent); box-shadow: inset 0 1px 0 var(--glass-hi), 0 1px 3px rgba(40, 25, 10, .08); transition: border-color .2s ease, background-color .2s ease; }
+.tsc.warn { --c: var(--warn); } .tsc.bad { --c: var(--bad); } .tsc.cache { --c: var(--accent); }
+.tsc.warn, .tsc.bad { border-color: color-mix(in srgb, var(--c) 35%, var(--line)); background: color-mix(in srgb, var(--c) 9%, color-mix(in srgb, var(--surface) 55%, transparent)); }
+.term-stats .tsc:hover { border-color: color-mix(in srgb, var(--c) 50%, var(--line)); background: color-mix(in srgb, var(--surface) 72%, transparent); }
 .tsc .tsh { display: flex; align-items: baseline; gap: 6px; line-height: 1.1; }
 .tsc b { font-size: 9px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); }
 .tsc .tsv { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
 .tsc.warn .tsv, .tsc.bad .tsv { color: var(--c); }
 .tsc .tsd { font-family: var(--mono); font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.tsc .tsb { display: flex; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--line) 85%, transparent); overflow: hidden; }
-.tsc .tsb s { display: block; height: 100%; width: 0; background: var(--c); text-decoration: none; transition: width .6s ease; flex: none; }
-.tsc .tsb s.cache { background: color-mix(in srgb, var(--c) 32%, transparent); }
+.tsc .tsb { display: flex; height: 4px; border-radius: 3px; background: color-mix(in srgb, var(--line) 75%, transparent); overflow: hidden; }
+.tsc .tsb s { display: block; height: 100%; width: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--c) 40%, var(--surface)), var(--c)); text-decoration: none; transition: width .6s ease; flex: none; }.tsc .tsb s.cache { background: color-mix(in srgb, var(--c) 32%, transparent); }
 /* one hairline per core next to the CPU figure, filled from the bottom */
 .tsc .tsk { display: inline-flex; align-items: stretch; gap: 2px; height: 11px; margin-left: 3px; align-self: center; }
 .tsc .tsk s { position: relative; display: block; width: 3px; border-radius: 1px; background: color-mix(in srgb, var(--line) 90%, transparent); text-decoration: none; overflow: hidden; }
@@ -261,7 +273,7 @@ textarea.editor { width: 100%; min-height: 320px; }
 .term-stage.narrow .term-bar .term-snip-btn { width: 30px; padding: 0; justify-content: center; }
 .term-stage.narrow .term-stats { gap: 4px; }
 .term-stage.narrow .tsc { padding: 3px 7px 4px; }
-.term-stage.narrow .tsc .tsd, .term-stage.narrow .tsc .tsk, .term-stage.narrow .tsc.tasks { display: none; }
+.term-stage.narrow .tsc .tsd, .term-stage.narrow .tsc .tsk, .term-stage.narrow .tsc.tasks, .term-stage.narrow .tsc.cache { display: none; }
 .term-stage.tight .term-bar { padding-left: 8px; gap: 5px; }
 .term-stage.tight .term-bar .tstate .txt { display: none; }
 .term-stage.tight .tsc.load, .term-stage.tight .tsc.up, .term-stage.tight .tsc.swap { display: none; }

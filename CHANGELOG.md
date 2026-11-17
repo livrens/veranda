@@ -10,6 +10,23 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 
 ## [Unreleased]
 
+## [1.0.16] - 2026-11-17
+
+### Added
+- Hosts: the startup snippet is now an ordered list of startup steps. The first step is sent
+  when the shell opens, each later one once the terminal has been quiet for about 400 ms (or
+  after 10 s at most). Steps are added, removed and reordered in the host dialog.
+- Hosts: a "sudo password" startup step answers a password prompt with the password saved for
+  the host. It is sent once, only while a password prompt is on screen; if none appears within
+  15 s the step is skipped, and if the prompt comes back the remaining steps are cancelled
+  without a retry. The password stays in the system credential store and is never written to
+  the settings file, a snippet, a log or the window.
+
+### Changed
+- Hosts saved by earlier versions keep their startup snippet as a list of one step. A startup
+  snippet that cannot be read (snippets locked, or the snippet was deleted) cancels that step
+  and the ones after it.
+
 ## [1.0.15] - 2026-11-17
 
 ### Changed

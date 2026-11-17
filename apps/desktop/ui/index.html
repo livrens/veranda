@@ -658,10 +658,10 @@
     <label data-auth="password"><span data-i18n="db.password">Password</span><input type="password" name="password" autocomplete="new-password" placeholder="••••••••"><button type="button" class="btn small" id="btn-host-clear-pw" data-i18n="rm.clearPassword">Clear</button></label>
     <label data-auth="key"><span data-i18n="rm.key">Key</span><select name="key_id"></select></label>
     <label data-auth="identity"><span data-i18n="rm.identity">Identity</span><select name="identity_id"></select></label>
-    <div class="two">
-      <label><span data-i18n="rm.jump">Jump host</span><select name="jump_host_id"></select></label>
-      <label><span data-i18n="rm.startup">Startup snippet</span><select name="startup_snippet_id"></select></label>
-    </div>
+    <label><span data-i18n="rm.jump">Jump host</span><select name="jump_host_id"></select></label>
+    <label><span data-i18n="rm.startup">Startup steps</span><select id="host-startup-add"></select></label>
+    <ol id="host-startup-list" class="startup-steps"></ol>
+    <p class="sub startup-hint" data-i18n="rm.startupHint">Steps are sent in this order after login, each one once the terminal has gone quiet. The sudo password step uses the password saved for this host and sends it only when a password prompt appears.</p>
     <div class="two">
       <label><span data-i18n="rm.tags">Tags</span><input name="tags" placeholder="prod, web"></label>
       <label><span data-i18n="rm.color">Colour</span><div class="swatches" id="host-colors"></div><input type="hidden" name="color"></label>
@@ -735,7 +735,10 @@
       <label><span data-i18n="rm.name">Name</span><input name="label" required></label>
       <label><span data-i18n="rm.folder">Folder</span><input name="folder" placeholder="Maintenance"></label>
     </div>
-    <label class="block"><span data-i18n="rm.script">Script</span><textarea name="script" rows="7" spellcheck="false" placeholder="sudo apt update && sudo apt upgrade -y"></textarea></label>
+    <label><span data-i18n="rm.snKind">Type</span><select name="kind"><option value="command" data-i18n="rm.snKindCommand">Command</option><option value="password" data-i18n="rm.snKindPassword">Password</option></select></label>
+    <label class="block" data-sn="command"><span data-i18n="rm.script">Script</span><textarea name="script" rows="7" spellcheck="false" placeholder="sudo apt update && sudo apt upgrade -y"></textarea></label>
+    <label data-sn="password"><span data-i18n="db.password">Password</span><input type="password" name="secret" autocomplete="new-password" spellcheck="false"></label>
+    <p class="sub" data-sn="password" data-i18n="rm.snPasswordHint">Sent only while the terminal shows a password prompt. It is stored encrypted under the snippet password and is never shown, copied or run on hosts.</p>
     <div class="actions-row">
       <button type="button" class="btn" data-close="dlg-snippet" data-i18n="btn.cancel">Cancel</button>
       <button type="submit" class="btn primary" data-i18n="btn.save">Save</button>

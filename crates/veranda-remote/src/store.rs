@@ -3,10 +3,13 @@
 //! One JSON file, `etc/remote/store.json`, written atomically with private permissions. Secrets
 //! (passwords, passphrases) are never written here; see [`crate::secrets`].
 
+use crate::vault::Lock;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use veranda_core::paths::Layout;
+
+const LOCKED: &str = "snippets are locked; unlock them first";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -22,6 +25,16 @@ pub enum AuthKind {
     Agent,
     /// No stored credential: the server decides (keyboard-interactive / password prompt).
     None,
+}
+
+/// One entry of a host's startup sequence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StartupStep {
+    /// Send this snippet.
+    Snippet { id: String },
+    /// Answer a password prompt with the host's saved password (kept in the secret store only).
+    SudoPassword,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -43,7 +56,11 @@ pub struct Host {
     pub has_password: bool,
     /// Connect through this host first (ProxyJump).
     pub jump_host_id: Option<String>,
-    /// Snippet sent to the terminal right after login.
+    /// Sent to the terminal after login, in this order.
+    pub startup_steps: Vec<StartupStep>,
+    /// Single startup snippet of files written before 1.0.16; read only and folded into
+    /// `startup_steps` on load.
+    #[serde(skip_serializing)]
     pub startup_snippet_id: Option<String>,
     pub keep_alive: bool,
     pub agent_forwarding: bool,
@@ -72,6 +89,7 @@ impl Default for Host {
             key_id: None,
             has_password: false,
             jump_host_id: None,
+            startup_steps: vec![],
             startup_snippet_id: None,
             keep_alive: true,
             agent_forwarding: false,
@@ -85,6 +103,15 @@ impl Default for Host {
 }
 
 impl Host {
+    /// Turn the old single startup snippet into a one-step list.
+    fn fold_startup(&mut self) {
+        if let Some(id) = self.startup_snippet_id.take()
+            && self.startup_steps.is_empty()
+        {
+            self.startup_steps.push(StartupStep::Snippet { id });
+        }
+    }
+
     /// `user@host:port` style summary.
     pub fn summary(&self) -> String {
         let user = if self.username.is_empty() {
@@ -140,6 +167,16 @@ pub struct KeyMeta {
     pub created_at: u64,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SnippetKind {
+    /// Text typed into a terminal or run on hosts.
+    #[default]
+    Command,
+    /// A secret: stored sealed only, never sent to the UI, typed only at a password prompt.
+    Password,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(default)]
 pub struct Snippet {
@@ -147,12 +184,95 @@ pub struct Snippet {
     pub label: String,
     /// Package/folder name used to group snippets.
     pub folder: String,
+    /// Missing in files written before 1.0.16: read as a command.
+    pub kind: SnippetKind,
     /// The command text. Empty while the body is stored encrypted in `script_enc`, and in the
-    /// data sent to the UI when the snippet lock is on and not unlocked.
+    /// data sent to the UI when the snippet lock is on and not unlocked. Always empty for a
+    /// password snippet, on disk and in the UI.
     pub script: String,
     /// `script` sealed by [`crate::vault::Key::seal`] when a snippet lock is set.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub script_enc: String,
+}
+
+/// Why a snippet was not saved or run, or the snippet lock not removed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnippetRefusal {
+    /// A password snippet needs a snippet lock: it is never stored as plain text.
+    NeedsLock,
+    /// A password is one line.
+    OneLine,
+    /// A new password snippet without a password.
+    NoPassword,
+    /// A password snippet turned into a command without a new body.
+    NewBody,
+    /// The lock cannot be removed while password snippets exist.
+    KeepLock,
+    /// A password snippet is never run on hosts.
+    NoRun,
+}
+
+impl std::fmt::Display for SnippetRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::NeedsLock => "a password snippet needs a snippet password; set one first",
+            Self::OneLine => "a password is a single line",
+            Self::NoPassword => "enter the password",
+            Self::NewBody => "enter the new command; the saved password is never shown",
+            Self::KeepLock => "password snippets exist; the snippet password stays",
+            Self::NoRun => "a password snippet cannot be run on hosts",
+        })
+    }
+}
+
+impl std::error::Error for SnippetRefusal {}
+
+impl Snippet {
+    /// Get a snippet coming from the UI ready for the store: check it against the saved one
+    /// (`old`) and seal its body. Whatever the UI put in `script_enc` is ignored. A password
+    /// snippet with an empty body keeps the saved one; its plain text is wiped here.
+    pub fn prepare(&mut self, old: Option<&Snippet>, lock: Lock<'_>) -> Result<()> {
+        let done = self.seal_body(old, lock);
+        if self.kind == SnippetKind::Password {
+            crate::vault::forget(std::mem::take(&mut self.script));
+        }
+        done
+    }
+
+    fn seal_body(&mut self, old: Option<&Snippet>, lock: Lock<'_>) -> Result<()> {
+        let saved = old.filter(|o| o.kind == SnippetKind::Password);
+        if self.kind == SnippetKind::Password {
+            if self.script.contains(['\n', '\r']) {
+                return Err(SnippetRefusal::OneLine.into());
+            }
+            let key = match lock {
+                Lock::Off => return Err(SnippetRefusal::NeedsLock.into()),
+                Lock::Locked => anyhow::bail!(LOCKED),
+                Lock::Open(key) => key,
+            };
+            self.script_enc = if !self.script.is_empty() {
+                key.seal(&self.script)?
+            } else {
+                match saved {
+                    Some(o) if !o.script_enc.is_empty() => o.script_enc.clone(),
+                    _ => return Err(SnippetRefusal::NoPassword.into()),
+                }
+            };
+            return Ok(());
+        }
+        if saved.is_some() && self.script.trim().is_empty() {
+            return Err(SnippetRefusal::NewBody.into());
+        }
+        match lock {
+            Lock::Off => self.script_enc.clear(),
+            Lock::Locked => anyhow::bail!(LOCKED),
+            Lock::Open(key) => {
+                self.script_enc = key.seal(&self.script)?;
+                self.script.clear();
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -320,6 +440,7 @@ impl Store {
         if store.version == 0 {
             store.version = 1;
         }
+        store.hosts.iter_mut().for_each(Host::fold_startup);
         Ok(store)
     }
 
@@ -352,6 +473,11 @@ impl Store {
     pub fn snippet(&self, id: &str) -> Option<&Snippet> {
         self.snippets.iter().find(|s| s.id == id)
     }
+    pub fn has_password_snippet(&self) -> bool {
+        self.snippets
+            .iter()
+            .any(|s| s.kind == SnippetKind::Password)
+    }
     pub fn forward(&self, id: &str) -> Option<&ForwardRule> {
         self.forwards.iter().find(|f| f.id == id)
     }
@@ -371,6 +497,7 @@ impl Store {
         if host.label.trim().is_empty() {
             host.label = host.address.clone();
         }
+        host.fold_startup();
         host.tags = host
             .tags
             .iter()
@@ -495,9 +622,8 @@ impl Store {
         let before = self.snippets.len();
         self.snippets.retain(|s| s.id != id);
         for h in &mut self.hosts {
-            if h.startup_snippet_id.as_deref() == Some(id) {
-                h.startup_snippet_id = None;
-            }
+            h.startup_steps
+                .retain(|s| !matches!(s, StartupStep::Snippet { id: sid } if sid == id));
         }
         self.snippets.len() != before
     }
@@ -650,5 +776,144 @@ mod tests {
         let s = Store::load_from(&file).unwrap();
         assert_eq!(s.hosts[0].address, "x");
         assert_eq!(s.hosts[0].port, 22);
+    }
+
+    #[test]
+    fn old_startup_snippet_becomes_one_step() {
+        let json = r#"{"version":1,"hosts":[{"id":"a","address":"x","startup_snippet_id":"s1"},{"id":"b","address":"y","startup_snippet_id":null}],"snippets":[{"id":"s1","label":"one"}]}"#;
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("store.json");
+        std::fs::write(&file, json).unwrap();
+        let mut s = Store::load_from(&file).unwrap();
+        let step = StartupStep::Snippet { id: "s1".into() };
+        assert_eq!(s.hosts[0].startup_steps, vec![step]);
+        assert!(s.hosts[1].startup_steps.is_empty());
+
+        s.hosts[0].startup_steps.push(StartupStep::SudoPassword);
+        s.save_to(&file).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(!text.contains("startup_snippet_id"));
+        assert!(text.contains(r#""kind": "sudo_password""#));
+        let mut back = Store::load_from(&file).unwrap();
+        assert_eq!(back, s);
+
+        assert!(back.remove_snippet("s1"));
+        assert_eq!(back.hosts[0].startup_steps, vec![StartupStep::SudoPassword]);
+    }
+
+    #[test]
+    fn snippet_without_a_kind_is_a_command() {
+        let json = r#"{"version":1,"snippets":[{"id":"s1","label":"one","script":"df -h"},{"id":"s2","label":"two","kind":"password","script_enc":"v1:AAAA"}]}"#;
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("store.json");
+        std::fs::write(&file, json).unwrap();
+        let s = Store::load_from(&file).unwrap();
+        assert_eq!(s.snippets[0].kind, SnippetKind::Command);
+        assert_eq!(s.snippets[0].script, "df -h");
+        assert_eq!(s.snippets[1].kind, SnippetKind::Password);
+        assert!(s.has_password_snippet());
+
+        s.save_to(&file).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains(r#""kind": "command""#));
+        assert!(text.contains(r#""kind": "password""#));
+        assert_eq!(Store::load_from(&file).unwrap(), s);
+    }
+
+    fn refusal(r: Result<()>) -> Option<SnippetRefusal> {
+        r.err()?.downcast_ref::<SnippetRefusal>().copied()
+    }
+
+    #[test]
+    fn password_snippet_is_sealed_and_an_empty_body_keeps_the_saved_one() {
+        let (_, key) = crate::vault::LockFile::create_with("hunter22", 15, 1000).unwrap();
+        let entry = |script: &str| Snippet {
+            id: "s1".into(),
+            label: "sudo".into(),
+            kind: SnippetKind::Password,
+            script: script.into(),
+            ..Default::default()
+        };
+
+        // no lock, a locked lock, more than one line, nothing to store
+        let mut s = entry("first one");
+        assert_eq!(
+            refusal(s.prepare(None, Lock::Off)),
+            Some(SnippetRefusal::NeedsLock)
+        );
+        assert!(s.script.is_empty() && s.script_enc.is_empty());
+        let mut s = entry("first one");
+        assert!(s.prepare(None, Lock::Locked).is_err());
+        assert!(s.script.is_empty() && s.script_enc.is_empty());
+        assert_eq!(
+            refusal(entry("a\nb").prepare(None, Lock::Open(&key))),
+            Some(SnippetRefusal::OneLine)
+        );
+        assert_eq!(
+            refusal(entry("").prepare(None, Lock::Open(&key))),
+            Some(SnippetRefusal::NoPassword)
+        );
+
+        let mut saved = entry("first one");
+        saved.script_enc = "from the UI".into();
+        saved.prepare(None, Lock::Open(&key)).unwrap();
+        assert!(saved.script.is_empty());
+        assert_eq!(key.open(&saved.script_enc).unwrap(), "first one");
+
+        // edited with the body left empty: the saved password stays
+        let mut renamed = entry("");
+        renamed.label = "sudo prod".into();
+        renamed.prepare(Some(&saved), Lock::Open(&key)).unwrap();
+        assert_eq!(renamed.script_enc, saved.script_enc);
+        assert!(renamed.script.is_empty());
+
+        // a new body replaces it
+        let mut changed = entry("second one");
+        changed.prepare(Some(&saved), Lock::Open(&key)).unwrap();
+        assert_eq!(key.open(&changed.script_enc).unwrap(), "second one");
+
+        // an empty body over a command snippet has nothing to keep
+        let command = Snippet {
+            id: "s1".into(),
+            script_enc: key.seal("df -h").unwrap(),
+            ..Default::default()
+        };
+        assert_eq!(
+            refusal(entry("").prepare(Some(&command), Lock::Open(&key))),
+            Some(SnippetRefusal::NoPassword)
+        );
+    }
+
+    #[test]
+    fn password_snippet_never_becomes_a_command_by_itself() {
+        let (_, key) = crate::vault::LockFile::create_with("hunter22", 15, 1000).unwrap();
+        let saved = Snippet {
+            id: "s1".into(),
+            kind: SnippetKind::Password,
+            script_enc: key.seal("first one").unwrap(),
+            ..Default::default()
+        };
+        let command = |script: &str| Snippet {
+            id: "s1".into(),
+            script: script.into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            refusal(command(" \n").prepare(Some(&saved), Lock::Open(&key))),
+            Some(SnippetRefusal::NewBody)
+        );
+        let mut s = command("whoami");
+        s.prepare(Some(&saved), Lock::Open(&key)).unwrap();
+        assert_eq!(key.open(&s.script_enc).unwrap(), "whoami");
+
+        // command snippets keep their old rules: plain without a lock, sealed with one
+        let mut plain = command("df -h");
+        plain.script_enc = "stale".into();
+        plain.prepare(None, Lock::Off).unwrap();
+        assert_eq!(
+            (plain.script.as_str(), plain.script_enc.as_str()),
+            ("df -h", "")
+        );
+        assert!(command("df -h").prepare(None, Lock::Locked).is_err());
     }
 }
