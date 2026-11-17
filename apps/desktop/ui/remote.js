@@ -457,17 +457,17 @@
     return t("rm.connecting");
   };
   /* Server stats strip: CPU / RAM / disk meters under the bar of an SSH terminal. One tiny
-     command over the existing connection every 5 s, only for the terminal that is visible;
+     command over the existing connection every 2 s, only for the terminal that is visible;
      nothing runs while the tab is hidden, the window is in the background or the user hid it. */
   const statsOn = () => { try { return localStorage.getItem("veranda.termStats") !== "0"; } catch (e) { return true; } };
-  /* Figures older than 2.5 polls count as stale: the strip is dimmed and the tooltips say so
-     (failed reads, a link that stopped answering). Checked inside the existing poll, no timer
-     of its own; the next good reading brings the strip back. */
-  const STATS_EVERY = 5000, STATS_STALE = STATS_EVERY * 2.5;
+  /* Figures older than 12.5 s (longer than one slow read) count as stale: the strip is dimmed
+     and the tooltips say so (failed reads, a link that stopped answering). Checked inside the
+     existing poll, no timer of its own; the next good reading brings the strip back. */
+  const STATS_EVERY = 2000, STATS_STALE = 12500;
   const statsStale = (x) => Date.now() - (x.statsAt || 0) > STATS_STALE;
   const dimIfStale = (x) => { if (x.stats && !x.statsDim && statsStale(x)) renderStats(x); };
   /* Three reads in a row that failed or ran out of time: ask once a minute instead, so a
-     struggling server is left alone; the first whole reading brings the 5 s pace back. */
+     struggling server is left alone; the first whole reading brings the 2 s pace back. */
   const STATS_SLOW = 60000, STATS_FAILS = 3;
   // the backend sends a category code only; anything unknown reads as "no data"
   const statsErrText = (x) => t({ refused: "rm.statsErrRefused", timeout: "rm.statsErrTimeout" }[x.statsErr] || "rm.statsErrNoData");
@@ -478,7 +478,7 @@
   const clamp = (pct) => pct == null ? 0 : Math.max(0, Math.min(100, pct));
   /* One tile: label, big figure, dim detail, a thin bar underneath (optionally two segments:
      solid = used, faded = cache) and, for CPU, one hairline per core. Plain spans; the only
-     animation is the bar width, so repainting every 5 s costs nothing noticeable. */
+     animation is the bar width, so repainting every 2 s costs nothing noticeable. */
   function tile(cls, label, pct, value, detail, title, segs, cores) {
     const bar = pct == null && !segs ? "" : `<i class="tsb">${segs ? segs.map((s) => `<s class="${s.cls || ""}" style="width:${clamp(s.pct)}%"></s>`).join("") : `<s style="width:${clamp(pct)}%"></s>`}</i>`;
     const mini = cores?.length ? `<span class="tsk">${cores.map((c) => `<s class="${lvlOf(c)}" style="--h:${clamp(c)}%"></s>`).join("")}</span>` : "";
@@ -535,7 +535,7 @@
     if (stale) for (const el of box.children) el.title = el.title ? `${staleT}\n${el.title}` : staleT;
   }
   let statsTimer = null;
-  async function pollStats(force) {
+  async function pollStats() {
     const x = R.terms.get(R.active);
     if (!x || x.closed || x.info?.kind === "local") return;
     if (!statsOn() || document.visibilityState !== "visible" || !$("#tab-terminal").classList.contains("active")) return;
@@ -546,14 +546,13 @@
       const st = await invoke("term_stats", { id: x.id });
       if (st) {
         x.stats = st; x.statsAt = Date.now(); x.statsErr = "";
-        // the forced re-read gets the cached answer: not an attempt of its own
-        if (!force) x.statsFails = st.partial ? (x.statsFails || 0) + 1 : 0;
-        renderStats(x); if (st.cpu == null && !force) setTimeout(() => pollStats(true), 3000);
+        x.statsFails = st.partial ? (x.statsFails || 0) + 1 : 0;
+        renderStats(x);
       }
     } catch (e) { x.statsErr = String(e); x.statsFails = (x.statsFails || 0) + 1; renderStats(x); } // last values stay, dimmed once stale
     finally { x.statsBusy = false; dimIfStale(x); }
   }
-  function scheduleStats() { clearInterval(statsTimer); statsTimer = setInterval(() => pollStats(false), STATS_EVERY); setTimeout(() => pollStats(false), 400); }
+  function scheduleStats() { clearInterval(statsTimer); statsTimer = setInterval(pollStats, STATS_EVERY); setTimeout(pollStats, 400); }
   function updateBar(x) {
     renderStats(x);
     const bar = $(".term-bar", x.el); if (!bar) return;
@@ -772,7 +771,7 @@
     $("#term-stage").classList.toggle("tight", w > 0 && w < 440);
     const x = R.terms.get(R.active); if (x && $("#tab-terminal").classList.contains("active")) { try { x.fit.fit(); } catch (e) {} }
   }).observe($("#term-stage"));
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pollStats(false); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pollStats(); });
   document.addEventListener("veranda:tab", (ev) => {
     if (ev.detail === "terminal") { const x = R.terms.get(R.active); if (x) requestAnimationFrame(() => { try { x.fit.fit(); } catch (e) {} x.term.focus(); }); }
     else if (["hosts", "forward", "snippets", "keychain", "history", "sftp"].includes(ev.detail)) refresh();

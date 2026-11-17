@@ -10,6 +10,12 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 
 ## [Unreleased]
 
+## [1.0.15] - 2026-11-17
+
+### Changed
+- Terminal stats strip: figures refresh every 2 s instead of every 5 s, still with one small
+  command at a time over the existing connection and only for the terminal that is visible.
+
 ## [1.0.14] - 2026-11-16
 
 ### Fixed

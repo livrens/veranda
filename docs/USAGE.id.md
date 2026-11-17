@@ -224,8 +224,9 @@ sesi.
 Di bawah bilah terminal SSH ada strip tipis berisi **CPU**, **RAM**, dan **Disk** server beserta
 uptime-nya. Disk adalah filesystem lokal yang paling penuh (yang habis lebih dulu; nama mount
 ditampilkan bila bukan `/`); arahkan kursor untuk melihat tiap mount dan total semua disk yang
-biasanya dilaporkan konsol cloud, itulah sebabnya angka di sana bisa lebih rendah. Nilainya dibaca
-dari `/proc` dan `df` lewat koneksi yang sudah ada tiap 10 detik selama terminal itu terlihat;
+biasanya dilaporkan konsol cloud, itulah sebabnya angka di sana bisa lebih rendah. CPU adalah
+rata-rata selama satu detik yang diukur pada tiap pembacaan. Nilainya dibaca
+dari `/proc` dan `df` lewat koneksi yang sudah ada tiap 2 detik selama terminal itu terlihat;
 tidak ada yang berjalan saat tab tersembunyi. Klik strip untuk menyembunyikannya; pengaturan
 terminal (ikon roda gigi) punya kotak centang untuk menampilkannya lagi.
 

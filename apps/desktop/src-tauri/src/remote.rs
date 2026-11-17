@@ -50,7 +50,7 @@ struct TermEntry {
     /// stats strip, which runs one small command on a separate channel now and then.
     conn: Option<Arc<Connection>>,
     /// Last `/proc/stat` sample (busy, total jiffies) so CPU% can be a delta, plus the last
-    /// result with its time (calls more often than every 5 s get the cached value).
+    /// result with the time it was asked (calls within 1.5 s of that get the cached value).
     cpu_prev: Option<(u64, u64)>,
     stats: Option<(Instant, ServerStats)>,
     stats_busy: bool,
@@ -250,8 +250,10 @@ fn parse_stats(out: &str, prev: &mut Option<(u64, u64)>) -> ServerStats {
     s
 }
 
-/// CPU, memory and disk of the server behind an SSH terminal. Cached for 5 s; one call in
-/// flight per terminal; `None` for local terminals and sessions that are not connected.
+/// CPU, memory and disk of the server behind an SSH terminal. Cached for 1.5 s from the moment
+/// it was asked (the read itself takes over a second, so the UI's 2 s poll always gets a fresh
+/// one); one call in flight per terminal; `None` for local terminals and sessions that are not
+/// connected.
 #[tauri::command]
 pub async fn term_stats(
     state: State<'_, RemoteState>,
@@ -266,7 +268,7 @@ pub async fn term_stats(
             return Ok(None);
         }
         if let Some((at, st)) = &e.stats
-            && at.elapsed() < Duration::from_secs(4)
+            && at.elapsed() < Duration::from_millis(1500)
         {
             return Ok(Some(st.clone()));
         }
@@ -279,6 +281,7 @@ pub async fn term_stats(
         e.stats_busy = true;
         c
     };
+    let asked = Instant::now();
     let r = client::exec_partial(&conn, STATS_CMD, 8).await;
     let mut g = lock(&state.terms);
     let Some(e) = g.get_mut(&id) else {
@@ -298,7 +301,7 @@ pub async fn term_stats(
                 && st.uptime_secs.is_none()
                 && st.disks.is_empty();
             if !empty {
-                e.stats = Some((Instant::now(), st.clone()));
+                e.stats = Some((asked, st.clone()));
                 return Ok(Some(st));
             }
             if cut { "timeout" } else { "nodata" }
