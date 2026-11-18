@@ -10,6 +10,21 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 
 ## [Unreleased]
 
+## [1.0.17] - 2026-11-18
+
+### Added
+- Database: import a MySQL 5.6 data folder into MariaDB through a dump and reload, with a full
+  backup first and a check afterwards.
+- Database: delete the data folder of an inactive engine, with a backup first.
+- Database: MySQL 5.6.51 support.
+
+### Changed
+- Database: where MySQL 5.6 cannot run because the system has no `libncurses.so.5`, the error
+  now points to "Import MySQL 5.6 data" on the Database page, with a translated hint in the UI
+  and updated usage docs.
+- phpMyAdmin keeps its `blowfish_secret` when it is reinstalled.
+- RAM and Disk statistics are counted the same way as the server panel.
+
 ## [1.0.16] - 2026-11-17
 
 ### Added
