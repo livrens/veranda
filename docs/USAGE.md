@@ -88,12 +88,11 @@ by MySQL 8.0 or newer). The download is checked against the MD5 published next t
 The data folder is created with `mysql_install_db`, the root password is set with
 `SET PASSWORD … = PASSWORD(…)`, and the server listens on `127.0.0.1` only.
 
-It needs system libraries: `sudo apt install libaio1 libnuma1 perl libncurses5` (on Ubuntu
-24.04 and newer the first package is `libaio1t64`; Veranda links `libaio.so.1` inside the
-package itself). `libncurses5` (which brings `libtinfo5`) is gone from Ubuntu 24.04 and newer;
-install the `libtinfo5` and `libncurses5` `.deb` files from the Ubuntu 23.04 archive, or, at your
-own discretion, link `libncursesw.so.6`/`libtinfo.so.6` as `libncurses.so.5`/`libtinfo.so.5` in
-`/usr/lib/x86_64-linux-gnu` (works for the client in most cases, not guaranteed).
+It needs system libraries: `sudo apt install libaio1 libnuma1 perl` (on Ubuntu 24.04 and newer
+the first package is `libaio1t64`; Veranda links `libaio.so.1` inside the package itself). Its
+`mysql` client also needs `libncurses.so.5`, which Ubuntu 24.04 and newer no longer ship. On
+such systems Veranda does not start MySQL 5.6; move its databases to MariaDB with **Import MySQL
+5.6 data** on the Database page instead.
 
 ## 5. Logs
 

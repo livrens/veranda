@@ -84,7 +84,11 @@ function toast(msg, cls = "") {
   setTimeout(close, cls === "bad" ? 6000 : 2800);
   logActivity(msg, cls === "bad" ? "bad" : cls === "ok" ? "ok" : "");
 }
-const fail = (e) => { const m = typeof e === "string" ? e : e?.message || String(e); toast(m, "bad"); console.error(e); };
+const fail = (e) => {
+  let m = typeof e === "string" ? e : e?.message || String(e);
+  if (m.includes("libncurses.so.5")) m = t("m56.noNcurses"); // see ensure_mysql56_deps
+  toast(m, "bad"); console.error(e);
+};
 window.addEventListener("error", (ev) => toast(`UI error: ${ev.message} (${(ev.filename || "").split("/").pop()}:${ev.lineno})`, "bad"));
 window.addEventListener("unhandledrejection", (ev) => toast(`UI error: ${ev.reason?.message || ev.reason}`, "bad"));
 function askConfirm(text, okLabel) {

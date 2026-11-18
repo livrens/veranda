@@ -170,6 +170,7 @@ fn find_system_lib(name: &str) -> Option<std::path::PathBuf> {
 }
 
 /// MySQL 5.6 also needs Perl (mysql_install_db) and the ncurses 5 ABI (the `mysql` client).
+/// The UI matches the `libncurses.so.5` text to show its translated hint.
 #[cfg(target_os = "linux")]
 pub fn ensure_mysql56_deps() -> Result<()> {
     if !std::path::Path::new("/usr/bin/perl").exists() {
@@ -177,9 +178,8 @@ pub fn ensure_mysql56_deps() -> Result<()> {
     }
     if find_system_lib("libncurses.so.5").is_none() {
         bail!(
-            "the MySQL 5.6 client needs libncurses.so.5 and libtinfo.so.5: \
-             `sudo apt install libncurses5` (Ubuntu up to 23.10, Debian up to 12). \
-             Newer releases no longer ship it; see the MySQL 5.6 section of docs/USAGE.md"
+            "MySQL 5.6 cannot run here: this system has no libncurses.so.5. \
+             Move its databases to MariaDB with \"Import MySQL 5.6 data\" on the Database page"
         );
     }
     Ok(())

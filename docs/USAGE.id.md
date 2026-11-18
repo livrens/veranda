@@ -84,13 +84,11 @@ dengan MD5 resmi yang terbit di samping arsipnya. Folder data dibuat dengan `mys
 kata sandi root diatur dengan `SET PASSWORD … = PASSWORD(…)`, dan server hanya mendengarkan
 `127.0.0.1`.
 
-Pustaka sistem yang dibutuhkan: `sudo apt install libaio1 libnuma1 perl libncurses5` (di Ubuntu
-24.04 dan yang lebih baru paket pertama bernama `libaio1t64`; Veranda menautkan `libaio.so.1`
-di dalam paketnya sendiri). `libncurses5` (yang membawa `libtinfo5`) sudah tidak ada di Ubuntu
-24.04 dan yang lebih baru; pasang berkas `.deb` `libtinfo5` dan `libncurses5` dari arsip Ubuntu
-23.04, atau atas keputusan Anda sendiri tautkan `libncursesw.so.6`/`libtinfo.so.6` sebagai
-`libncurses.so.5`/`libtinfo.so.5` di `/usr/lib/x86_64-linux-gnu` (biasanya cukup untuk klien,
-tetapi tidak dijamin).
+Pustaka sistem yang dibutuhkan: `sudo apt install libaio1 libnuma1 perl` (di Ubuntu 24.04 dan
+yang lebih baru paket pertama bernama `libaio1t64`; Veranda menautkan `libaio.so.1` di dalam
+paketnya sendiri). Klien `mysql`-nya juga membutuhkan `libncurses.so.5`, yang sudah tidak ada di
+Ubuntu 24.04 dan yang lebih baru. Di sistem seperti itu Veranda tidak menjalankan MySQL 5.6;
+pindahkan database-nya ke MariaDB dengan **Impor data MySQL 5.6** di halaman Database.
 
 Dialog menampilkan persentase (berbobot ukuran database), database yang sedang disalin, dan
 byte yang mengalir. Jendelanya boleh ditutup; tombol **Migrate** menampilkan kemajuannya dan
