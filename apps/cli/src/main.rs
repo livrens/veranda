@@ -214,6 +214,12 @@ enum DbCmd {
     Import {
         file: PathBuf,
     },
+    /// Move the databases of an old MySQL 5.6 data folder into the active MariaDB, after a full
+    /// MariaDB backup. The folder is only read; existing database names are skipped and user
+    /// accounts are not moved.
+    ImportMysql56 {
+        dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -638,8 +644,8 @@ async fn run(cli: Cli) -> Result<()> {
                     println!("created {name}");
                 }
                 DbCmd::Drop { name } => {
-                    veranda_core::db::drop_database(&db, &name)?;
-                    println!("dropped {name}");
+                    let backup = veranda_core::db::drop_database_with_backup(&db, &name, &name)?;
+                    println!("dropped {name}; backup: {}", backup.display());
                 }
                 DbCmd::List => {
                     for d in veranda_core::db::list_databases(&db)? {
@@ -655,6 +661,12 @@ async fn run(cli: Cli) -> Result<()> {
                     let current = veranda_core::db::root_password(&app.layout)?;
                     let new = new.unwrap_or_else(|| veranda_core::db::random_token(24));
                     veranda_core::db::set_root_password(&db, current.as_deref(), &new)?;
+                    if let Err(e) = veranda_core::packages::sync_phpmyadmin_no_password(
+                        &app.layout,
+                        new.is_empty(),
+                    ) {
+                        eprintln!("warning: phpMyAdmin AllowNoPassword not updated: {e:#}");
+                    }
                     if new.is_empty() {
                         println!("root password removed (connections only from this computer)");
                     } else {
@@ -674,6 +686,38 @@ async fn run(cli: Cli) -> Result<()> {
                     }
                     veranda_core::db::import_file(&db, &file)?;
                     println!("loaded {}", file.display());
+                }
+                DbCmd::ImportMysql56 { dir } => {
+                    let i = veranda_core::mysql56_import::inspect(&app, &dir)?;
+                    eprintln!(
+                        "MySQL 5.6 data, about {} MB; needs about {} MB free",
+                        i.bytes >> 20,
+                        i.needed >> 20
+                    );
+                    let r = veranda_core::mysql56_import::run(&app, &dir, &|p| {
+                        eprintln!("  [{:>2}%] {}", p.percent, p.message)
+                    })?;
+                    println!("MySQL {} -> {}", r.source_version, r.target_version);
+                    println!("full backup before the import: {}", r.backup);
+                    for (label, items) in [
+                        ("moved", &r.moved),
+                        ("skipped", &r.skipped),
+                        ("failed", &r.failed),
+                        ("differences", &r.mismatched),
+                        ("note", &r.notes),
+                        ("old account, not moved", &r.accounts),
+                    ] {
+                        for x in items {
+                            println!("{label:<22} {x}");
+                        }
+                    }
+                    println!(
+                        "{} moved, {} skipped, {} failed, {} with differences",
+                        r.moved.len(),
+                        r.skipped.len(),
+                        r.failed.len(),
+                        r.mismatched.len()
+                    );
                 }
             }
         }

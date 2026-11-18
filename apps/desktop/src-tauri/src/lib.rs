@@ -1155,6 +1155,20 @@ async fn db_list(state: State<'_, AppState>) -> CmdResult<Vec<String>> {
         .map_err(err)
 }
 
+/// Drop one database; the core re-checks the name, refuses system databases and backs it up first.
+#[tauri::command]
+async fn db_drop(state: State<'_, AppState>, name: String, confirm: String) -> CmdResult<String> {
+    let app = open_app(&state)?;
+    let db = db_ctx(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        veranda_core::db::drop_database_with_backup(&db, &name, &confirm)
+    })
+    .await
+    .map_err(err)?
+    .map(|p| p.display().to_string())
+    .map_err(err)
+}
+
 #[tauri::command]
 fn db_password(state: State<'_, AppState>) -> CmdResult<Option<String>> {
     let app = open_app(&state)?;
@@ -1172,13 +1186,72 @@ async fn db_set_password(state: State<'_, AppState>, new: Option<String>) -> Cmd
         None => veranda_core::db::random_token(24),
     };
     let n2 = new.clone();
+    let layout = app.layout.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        veranda_core::db::set_root_password(&db, current.as_deref(), &n2)
+        veranda_core::db::set_root_password(&db, current.as_deref(), &n2)?;
+        // The password is already changed; a config that cannot be updated is only logged.
+        if let Err(e) = veranda_core::packages::sync_phpmyadmin_no_password(&layout, n2.is_empty())
+        {
+            tracing::warn!("phpMyAdmin AllowNoPassword not updated: {e:#}");
+        }
+        anyhow::Ok(())
     })
     .await
     .map_err(err)?
     .map_err(err)?;
     Ok(new)
+}
+
+/// New random blowfish_secret in every phpMyAdmin config; the value never leaves the core.
+#[tauri::command]
+async fn pma_regenerate_secret(state: State<'_, AppState>) -> CmdResult<usize> {
+    let app = open_app(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        veranda_core::packages::regenerate_phpmyadmin_secret(&app.layout)
+    })
+    .await
+    .map_err(err)?
+    .map_err(err)
+}
+
+/// Size estimate and folder check for the MySQL 5.6 import.
+#[tauri::command]
+async fn mysql56_inspect(
+    state: State<'_, AppState>,
+    dir: String,
+) -> CmdResult<veranda_core::mysql56_import::Inspect> {
+    let app = open_app(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        veranda_core::mysql56_import::inspect(&app, std::path::Path::new(&dir))
+    })
+    .await
+    .map_err(err)?
+    .map_err(err)
+}
+
+/// Move an old MySQL 5.6 data folder's databases into the active server; progress arrives as
+/// `mysql56-progress`.
+#[tauri::command]
+async fn mysql56_import(
+    handle: AppHandle,
+    state: State<'_, AppState>,
+    dir: String,
+) -> CmdResult<veranda_core::mysql56_import::Report> {
+    let app = open_app(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let progress = |p: veranda_core::migrate::Progress| {
+            let _ = handle.emit("mysql56-progress", p);
+        };
+        veranda_core::mysql56_import::run(&app, std::path::Path::new(&dir), &progress)
+    })
+    .await
+    .map_err(err)?
+    .map_err(err)
+}
+
+#[tauri::command]
+fn mysql56_cancel() {
+    veranda_core::mysql56_import::request_cancel();
 }
 
 /// Disk use of each part of the root (packages, data, backups, logs, www, tmp).
@@ -2275,12 +2348,17 @@ pub fn run() {
             delete_project,
             db_create,
             db_list,
+            db_drop,
             db_password,
             db_set_password,
             db_backup,
             storage_usage,
             engine_data_list,
             engine_data_remove,
+            pma_regenerate_secret,
+            mysql56_inspect,
+            mysql56_import,
+            mysql56_cancel,
             free_space,
             ssl_trust,
             open_target,

@@ -1304,11 +1304,104 @@ $("#btn-db-nopass").onclick = async () => {
   if (!(await askConfirm(t("msg.confirmNoPassword"), t("db.noPassword")))) return;
   try { await invoke("db_set_password", { new: "" }); $("#db-password").textContent = t("db.none"); $("#db-password").classList.remove("secret"); toast(t("msg.pwCleared"), "ok"); } catch (e) { fail(e); }
 };
+$("#btn-pma-secret").onclick = async () => {
+  if (!(await askConfirm(t("pma.secretConfirm"), t("pma.newSecret")))) return;
+  try { await invoke("pma_regenerate_secret"); toast(t("pma.secretDone"), "ok"); } catch (e) { fail(e); }
+};
+
+/* ---------------- MySQL 5.6 data folder import ---------------- */
+let m56Busy = false;
+$("#btn-mysql56").onclick = () => {
+  if (!m56Busy) { $("#m56-report").classList.add("hidden"); $("#m56-check").textContent = ""; $("#m56-progress").classList.add("hidden"); }
+  $("#dlg-mysql56").showModal();
+};
+$("#btn-m56-close").onclick = () => $("#dlg-mysql56").close();
+async function m56Inspect() {
+  const dir = $("#form-mysql56").elements.path.value.trim(), el = $("#m56-check");
+  if (!dir) return null;
+  el.textContent = t("m56.checking");
+  try {
+    const r = await invoke("mysql56_inspect", { dir });
+    el.textContent = t(r.enough ? "m56.size" : "m56.noSpace", { size: fmtBytes(r.bytes), needed: fmtBytes(r.needed), free: r.free == null ? "?" : fmtBytes(r.free) });
+    return r;
+  } catch (e) { el.textContent = typeof e === "string" ? e : String(e); return null; }
+}
+$("#btn-m56-inspect").onclick = m56Inspect;
+$("#btn-m56-browse").onclick = async () => {
+  try {
+    const picked = await window.__TAURI__.dialog.open({ directory: true, multiple: false, title: t("m56.title") });
+    if (picked) { $("#form-mysql56").elements.path.value = typeof picked === "string" ? picked : picked.path || ""; m56Inspect(); }
+  } catch (e) { toast(t("migrate.noPicker"), "info"); }
+};
+$("#btn-m56-cancel").onclick = async () => { try { await invoke("mysql56_cancel"); $("#m56-progress .txt").textContent = t("m56.cancelling"); } catch (e) { fail(e); } };
+listen("mysql56-progress", (ev) => {
+  const pr = ev.payload, box = $("#m56-progress");
+  box.classList.remove("hidden");
+  $(".fill", box).style.width = `${pr.percent || 0}%`;
+  $(".pct", box).textContent = `${pr.percent || 0}%`;
+  $(".txt", box).textContent = pr.message || t("migrate.working");
+});
+$("#form-mysql56").onsubmit = async (ev) => {
+  ev.preventDefault();
+  if (m56Busy) return;
+  const r0 = await m56Inspect();
+  if (!r0 || !r0.enough) return;
+  m56Busy = true;
+  const btn = $("#btn-m56-run"), box = $("#m56-progress"), rep = $("#m56-report");
+  btn.disabled = true; rep.classList.add("hidden");
+  box.classList.remove("hidden"); $(".fill", box).style.width = "0%"; $(".pct", box).textContent = "0%"; $(".txt", box).textContent = t("migrate.working");
+  try {
+    const r = await invoke("mysql56_import", { dir: ev.target.elements.path.value.trim() });
+    const line = (cls, label, items) => items.length ? `<div class="rep ${cls}"><b>${label} (${items.length})</b><ul>${items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "";
+    /* accounts may carry host addresses: collapsed by default */
+    const accounts = r.accounts.length ? `<details class="rep"><summary><b>${t("m56.accounts")} (${r.accounts.length})</b></summary><ul>${r.accounts.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>` : "";
+    const head = `<div class="rep"><b>${esc(t("m56.versions", { from: r.source_version, to: r.target_version }))}</b><br>${esc(t("m56.backup", { file: r.backup }))}</div>`;
+    rep.innerHTML = head + (line("ok", t("m56.moved"), r.moved) + line("", t("migrate.skipped"), r.skipped) + line("bad", t("m56.failed"), r.failed) + line("bad", t("m56.mismatched"), r.mismatched) + line("", t("m56.notes"), r.notes) || `<div class="rep">${t("migrate.nothing")}</div>`) + accounts;
+    toast(t("m56.done", { moved: r.moved.length, skipped: r.skipped.length, failed: r.failed.length + r.mismatched.length }), r.failed.length || r.mismatched.length ? "info" : "ok");
+  } catch (e) { rep.innerHTML = `<div class="rep bad"><b>${esc(typeof e === "string" ? e : String(e))}</b></div>`; fail(e); }
+  rep.classList.remove("hidden"); box.classList.add("hidden"); btn.disabled = false; m56Busy = false;
+  refresh(true);
+};
 $("#btn-db-backup").onclick = async () => { try { const p = await invoke("db_backup"); toast(t("msg.backup", { path: p }), "ok"); } catch (e) { fail(e); } };
 $("#form-db").onsubmit = async (ev) => {
   ev.preventDefault(); const name = ev.target.elements.name.value.trim();
-  try { await invoke("db_create", { name }); toast(t("msg.created", { name }), "ok"); ev.target.reset(); const l = await invoke("db_list"); $("#db-list").innerHTML = l.map((d) => `<span class="chip">${esc(d)}</span>`).join(""); } catch (e) { fail(e); }
+  try { await invoke("db_create", { name }); toast(t("msg.created", { name }), "ok"); ev.target.reset(); await loadDbList(); } catch (e) { fail(e); }
 };
+/* one database per action; the backend repeats every check and backs up before dropping */
+const SYSTEM_DBS = ["information_schema", "performance_schema", "mysql", "sys"];
+async function loadDbList() {
+  const box = $("#db-list");
+  let l = [];
+  try { l = await invoke("db_list"); } catch (e) { box.innerHTML = ""; return; }
+  box.innerHTML = l.map((d) => SYSTEM_DBS.includes(d.toLowerCase()) ? `<span class="chip">${esc(d)}</span>`
+    : `<span class="chip">${esc(d)}<button type="button" class="icon-btn small" data-drop-db="${esc(d)}" title="${esc(t("dbDrop.button"))}"><i class="ic">${ICONS.trash}</i></button></span>`).join("");
+  $$("button[data-drop-db]", box).forEach((b) => { b.onclick = () => dropDb(b.dataset.dropDb, b); });
+}
+let dbDropBusy = false;
+async function dropDb(name, btn) {
+  if (dbDropBusy) return;
+  const dlg = $("#dlg-db-drop"), f = $("#form-db-drop");
+  f.reset();
+  $("#db-drop-title").textContent = t("dbDrop.title", { name });
+  $("#db-drop-type").textContent = t("dbDrop.typeName", { name });
+  f.elements.confirm.placeholder = name;
+  const ok = await new Promise((resolve) => {
+    const done = (v) => { dlg.close(); resolve(v); };
+    f.onsubmit = (ev) => {
+      ev.preventDefault();
+      if (f.elements.confirm.value !== name) { toast(t("dbDrop.typeMismatch", { name }), "bad"); return; }
+      done(true);
+    };
+    $("#btn-db-drop-cancel").onclick = () => done(false);
+    dlg.oncancel = (ev) => { ev.preventDefault(); done(false); };
+    dlg.showModal();
+  });
+  if (!ok) return;
+  dbDropBusy = true; btn.disabled = true; toast(t("dbDrop.working", { name }), "info");
+  try { const file = await invoke("db_drop", { name, confirm: f.elements.confirm.value }); toast(t("dbDrop.done", { name, file }), "ok"); } catch (e) { fail(e); }
+  dbDropBusy = false; await loadDbList();
+}
+document.addEventListener("veranda:tab", (ev) => { if (ev.detail === "database") loadDbList(); });
 $("#form-site").onsubmit = async (ev) => {
   ev.preventDefault(); const f = ev.target;
   try { await invoke("add_site", { hostname: f.elements.hostname.value.trim(), path: f.elements.path.value.trim(), public: f.elements.public.value.trim() }); f.reset(); await syncSites(); } catch (e) { fail(e); }

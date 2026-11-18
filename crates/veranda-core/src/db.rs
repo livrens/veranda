@@ -285,14 +285,52 @@ pub fn create_database(db: &DbCtx, name: &str) -> Result<()> {
 }
 
 pub fn drop_database(db: &DbCtx, name: &str) -> Result<()> {
-    if !is_valid_db_name(name)
-        || ["mysql", "sys", "information_schema", "performance_schema"].contains(&name)
-    {
+    if !is_valid_db_name(name) || SYSTEM_DBS.iter().any(|s| s.eq_ignore_ascii_case(name)) {
         bail!("refusing to drop `{name}`");
     }
     let pw = root_password(&db.layout)?.context("root password unknown")?;
     db.sql(&format!("DROP DATABASE IF EXISTS `{name}`;"), Some(&pw))?;
     Ok(())
+}
+
+/// Drop one user database after dumping it to `backups/dropped/` (outside backup rotation).
+/// `confirm` must repeat the name exactly; nothing is dropped when the dump fails.
+pub fn drop_database_with_backup(db: &DbCtx, name: &str, confirm: &str) -> Result<PathBuf> {
+    if confirm != name {
+        bail!("the confirmation does not match the database name");
+    }
+    if !is_valid_db_name(name) || SYSTEM_DBS.iter().any(|s| s.eq_ignore_ascii_case(name)) {
+        bail!("refusing to drop `{name}`");
+    }
+    if !list_databases(db)?.iter().any(|n| n == name) {
+        bail!("database `{name}` does not exist");
+    }
+    let dir = db.layout.backups().join("dropped");
+    std::fs::create_dir_all(&dir)?;
+    fsutil::make_private_dir(&dir)?;
+    let dest = dir.join(format!("{name}-{}.sql.gz", fsutil::timestamp()));
+    let pw = root_password(&db.layout)?.context("root password unknown")?;
+    let mut cmd = db.cmd(Binaries::db_dump(&db.pkg, db.engine));
+    cmd.args(db.client_base_args());
+    cmd.args([
+        "--protocol=tcp",
+        "-h",
+        "127.0.0.1",
+        "-P",
+        &db.port.to_string(),
+        "-u",
+        "root",
+        "--single-transaction",
+        "--routines",
+        "--events",
+        "--triggers",
+        "--databases",
+        name,
+    ])
+    .env("MYSQL_PWD", pw);
+    run_dump_to(cmd, &dest).context("backup before drop failed; nothing was dropped")?;
+    drop_database(db, name)?;
+    Ok(dest)
 }
 
 pub fn list_databases(db: &DbCtx) -> Result<Vec<String>> {

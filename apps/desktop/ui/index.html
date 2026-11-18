@@ -138,6 +138,7 @@
         <button class="btn" data-open="adminer">Adminer</button>
         <button class="btn" data-open="phpmyadmin">phpMyAdmin</button>
         <button class="btn" id="btn-db-backup"><i class="ic" data-icon="backup"></i><span data-i18n="db.backup">Backup</span></button>
+        <button class="btn" id="btn-mysql56"><i class="ic" data-icon="import"></i><span data-i18n="m56.open">Import MySQL 5.6 data</span></button>
       </header>
       <div class="card kv-card">
         <div class="kv"><span data-i18n="db.host">Host</span><code id="db-host"></code><button class="icon-btn small" data-copy="#db-host" title="Copy"><i class="ic" data-icon="copy"></i></button></div>
@@ -147,6 +148,7 @@
           <button class="icon-btn small" data-copy="#db-password" data-copy-secret="1" title="Copy"><i class="ic" data-icon="copy"></i></button>
           <button class="btn small" id="btn-db-rotate" data-i18n="db.rotate">New password</button>
           <button class="btn small" id="btn-db-nopass" data-i18n="db.noPassword">No password</button></div>
+        <div class="kv"><span>phpMyAdmin</span><button class="btn small" id="btn-pma-secret" data-i18n="pma.newSecret">Regenerate blowfish_secret</button></div>
       </div>
       <form id="form-db" class="inline">
         <input name="name" placeholder="database_name" pattern="[A-Za-z0-9_\-]{1,64}" required>
@@ -646,6 +648,38 @@
     <div class="actions-row">
       <button type="button" class="btn" id="btn-engine-data-cancel" data-i18n="btn.cancel">Cancel</button>
       <button type="submit" class="btn danger" id="btn-engine-data-ok" data-i18n="engineData.delete">Delete data</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-db-drop">
+  <form method="dialog" id="form-db-drop">
+    <h2 id="db-drop-title"></h2>
+    <p class="sub" data-i18n="dbDrop.text">A backup of this database is saved first in Veranda's backups/dropped folder. If the backup fails, nothing is deleted.</p>
+    <label><span id="db-drop-type"></span><input name="confirm" autocomplete="off" spellcheck="false" required></label>
+    <div class="actions-row">
+      <button type="button" class="btn" id="btn-db-drop-cancel" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn danger" data-i18n="dbDrop.ok">Back up and delete</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-mysql56" class="wide">
+  <form method="dialog" id="form-mysql56">
+    <h2 data-i18n="m56.title">Import a MySQL 5.6 data folder</h2>
+    <p class="sub" data-i18n="m56.hint">MariaDB is fully backed up first. Only a copy of the folder is opened.</p>
+    <label><span data-i18n="migrate.folder">Folder</span><input name="path" placeholder="/var/lib/mysql" required><button type="button" class="btn small" id="btn-m56-browse" data-i18n="btn.browse">Browse</button></label>
+    <p class="sub mono" id="m56-check"></p>
+    <div class="migrate-prog hidden" id="m56-progress">
+      <div class="progress"><svg class="spin" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10h-2.5A7.5 7.5 0 1 1 12 4.5z"/></svg><div class="bar"><div class="fill"></div></div><b class="pct">0%</b></div>
+      <div class="sub mono"><span class="txt"></span></div>
+      <div class="btn-row"><button type="button" class="btn small danger" id="btn-m56-cancel"><i class="ic" data-icon="x"></i><span data-i18n="m56.cancel">Cancel</span></button></div>
+    </div>
+    <div id="m56-report" class="report hidden"></div>
+    <div class="actions-row">
+      <button type="button" class="btn" id="btn-m56-close" data-i18n="btn.close">Close</button>
+      <button type="button" class="btn" id="btn-m56-inspect" data-i18n="m56.check">Check folder</button>
+      <button type="submit" class="btn primary" id="btn-m56-run" data-i18n="m56.run">Import</button>
     </div>
   </form>
 </dialog>

@@ -190,6 +190,17 @@ pub fn ensure_mysql56_deps() -> Result<()> {
     Ok(())
 }
 
+/// mysql.ibd only exists in 8.0+ data directories, which 5.6 would damage.
+pub(crate) fn refuse_newer_than_56(data_dir: &std::path::Path) -> Result<()> {
+    if data_dir.join("mysql.ibd").exists() {
+        bail!(
+            "{} holds data of a newer MySQL; MySQL 5.6 will not open it",
+            data_dir.display()
+        );
+    }
+    Ok(())
+}
+
 #[cfg(target_os = "linux")]
 pub fn ensure_runtime_libs(pkg_dir: &std::path::Path) -> Result<()> {
     let find = find_system_lib;
@@ -231,13 +242,7 @@ pub fn start(ctx: &Ctx) -> Result<()> {
     ensure_runtime_libs(&db.pkg.path)?;
     if db.is_mysql56() {
         ensure_mysql56_deps()?;
-        // mysql.ibd only exists in 8.0+ data directories, which 5.6 would damage.
-        if db.data_dir.join("mysql.ibd").exists() {
-            bail!(
-                "{} holds data of a newer MySQL; MySQL 5.6 will not open it",
-                db.data_dir.display()
-            );
-        }
+        refuse_newer_than_56(&db.data_dir)?;
     }
     let needs_setup = !ready_marker(&db).exists();
     if !db.is_initialized() {

@@ -218,7 +218,7 @@ pub async fn install(
             }
             let _ = std::fs::remove_file(&dl);
         }
-        post_install(pkg.kind, &staging)?;
+        post_install(layout, pkg.kind, &staging)?;
         if crate::config::Config::load_or_default(layout)
             .map(|c| c.general.slim_packages)
             .unwrap_or(true)
@@ -276,8 +276,101 @@ fn url_file_name(url: &str) -> Result<String> {
     Ok(name)
 }
 
+const PMA_CONFIG: &str = "config.inc.php";
+const PMA_SECRET_KEY: &str = "$cfg['blowfish_secret']";
+const PMA_NO_PASSWORD_KEY: &str = "$cfg['Servers'][$i]['AllowNoPassword']";
+
+/// True only when root is known to have an empty password; an unknown state counts as false.
+fn root_has_no_password(layout: &Layout) -> bool {
+    matches!(crate::db::root_password(layout), Ok(Some(p)) if p.is_empty())
+}
+
+/// Blowfish secret of an earlier phpMyAdmin install, newest first, so a reinstall or update
+/// keeps existing login cookies valid.
+fn previous_pma_secret(layout: &Layout) -> Option<String> {
+    let reg = Registry::load(layout).ok()?;
+    reg.items
+        .iter()
+        .rev()
+        .filter(|i| i.kind == Kind::PhpMyAdmin && i.path.starts_with(layout.bin()))
+        .find_map(|i| {
+            let text = std::fs::read_to_string(i.path.join(PMA_CONFIG)).ok()?;
+            text.lines().find_map(|l| {
+                let v = l
+                    .trim()
+                    .strip_prefix(PMA_SECRET_KEY)?
+                    .trim_start()
+                    .strip_prefix("= '")?
+                    .strip_suffix("';")?;
+                (v.len() >= 32 && v.chars().all(|c| c.is_ascii_alphanumeric()))
+                    .then(|| v.to_string())
+            })
+        })
+}
+
+/// Set `AllowNoPassword` in every installed phpMyAdmin config. Only that line is rewritten;
+/// a config without the line is left alone (phpMyAdmin then defaults to false).
+pub fn sync_phpmyadmin_no_password(layout: &Layout, allow: bool) -> Result<()> {
+    let want = format!("{PMA_NO_PASSWORD_KEY} = {allow};");
+    rewrite_pma_line(layout, PMA_NO_PASSWORD_KEY, &|| want.clone())?;
+    Ok(())
+}
+
+/// Give every installed phpMyAdmin a new random 32-character `blowfish_secret`, which ends all
+/// phpMyAdmin login sessions. The value is never logged or returned.
+pub fn regenerate_phpmyadmin_secret(layout: &Layout) -> Result<usize> {
+    let n = rewrite_pma_line(layout, PMA_SECRET_KEY, &|| {
+        format!("{PMA_SECRET_KEY} = '{}';", crate::db::random_token(32))
+    })?;
+    if n == 0 {
+        bail!(
+            "no phpMyAdmin config with a blowfish_secret line was found; install phpMyAdmin first"
+        );
+    }
+    Ok(n)
+}
+
+/// Replace the line starting with `key` in every installed phpMyAdmin config with `line()`.
+/// Returns how many configs had that line.
+fn rewrite_pma_line(layout: &Layout, key: &str, line: &dyn Fn() -> String) -> Result<usize> {
+    let reg = Registry::load(layout)?;
+    let mut found = 0;
+    for item in reg
+        .items
+        .iter()
+        .filter(|i| i.kind == Kind::PhpMyAdmin && i.path.starts_with(layout.bin()))
+    {
+        let path = item.path.join(PMA_CONFIG);
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let mut seen = false;
+        let mut changed = false;
+        let out: String = text
+            .split_inclusive('\n')
+            .map(|l| {
+                if !l.trim_start().starts_with(key) {
+                    return l.to_string();
+                }
+                seen = true;
+                let eol = &l[l.trim_end_matches(['\r', '\n']).len()..];
+                let new = format!("{}{eol}", line());
+                changed |= new != l;
+                new
+            })
+            .collect();
+        if seen {
+            found += 1;
+        }
+        if changed {
+            std::fs::write(&path, out).with_context(|| format!("updating {}", path.display()))?;
+        }
+    }
+    Ok(found)
+}
+
 /// Kind specific fix-ups after extraction (executable bits, layout normalisation).
-fn post_install(kind: Kind, dir: &Path) -> Result<()> {
+fn post_install(layout: &Layout, kind: Kind, dir: &Path) -> Result<()> {
     match kind {
         Kind::Php => {
             for n in ["php", "php-fpm", "php-cgi"] {
@@ -288,12 +381,14 @@ fn post_install(kind: Kind, dir: &Path) -> Result<()> {
             }
         }
         Kind::PhpMyAdmin => {
-            // Generated config: connect to 127.0.0.1 only, cookie auth, random blowfish secret.
-            let secret: String = crate::db::random_token(32);
+            // Generated config: connect to 127.0.0.1 only, cookie auth. AllowNoPassword follows
+            // root's current state (see `sync_phpmyadmin_no_password`).
+            let secret = previous_pma_secret(layout).unwrap_or_else(|| crate::db::random_token(32));
+            let allow = root_has_no_password(layout);
             let cfg = format!(
-                "<?php\n$cfg['blowfish_secret'] = '{secret}';\n$i = 1;\n$cfg['Servers'][$i]['auth_type'] = 'cookie';\n$cfg['Servers'][$i]['host'] = '127.0.0.1';\n$cfg['Servers'][$i]['AllowNoPassword'] = false;\n$cfg['TempDir'] = __DIR__ . '/tmp';\n$cfg['CheckConfigurationPermissions'] = false;\n"
+                "<?php\n{PMA_SECRET_KEY} = '{secret}';\n$i = 1;\n$cfg['Servers'][$i]['auth_type'] = 'cookie';\n$cfg['Servers'][$i]['host'] = '127.0.0.1';\n{PMA_NO_PASSWORD_KEY} = {allow};\n$cfg['TempDir'] = __DIR__ . '/tmp';\n$cfg['CheckConfigurationPermissions'] = false;\n"
             );
-            std::fs::write(dir.join("config.inc.php"), cfg)?;
+            std::fs::write(dir.join(PMA_CONFIG), cfg)?;
             std::fs::create_dir_all(dir.join("tmp"))?;
         }
         Kind::Postgres => {
@@ -407,6 +502,20 @@ impl Binaries {
                 }
             }
             DbEngine::MySql => Self::exe(&bin, "mysqladmin"),
+        }
+    }
+    pub fn db_check(i: &Installed, engine: DbEngine) -> PathBuf {
+        let bin = i.path.join("bin");
+        match engine {
+            DbEngine::MariaDb => {
+                let p = Self::exe(&bin, "mariadb-check");
+                if p.exists() {
+                    p
+                } else {
+                    Self::exe(&bin, "mysqlcheck")
+                }
+            }
+            DbEngine::MySql => Self::exe(&bin, "mysqlcheck"),
         }
     }
     /// MariaDB's data directory initialiser (unix: scripts/, windows: bin/).

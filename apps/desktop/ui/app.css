@@ -174,6 +174,8 @@ svg.logo path { fill: currentColor; }
 .pill select { background: transparent; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; height: auto; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .chip { padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-family: var(--mono); font-size: 12px; }
+.chip .icon-btn.small { width: 20px; height: 20px; margin: -2px -6px -2px 4px; vertical-align: middle; }
+.chip .icon-btn.small:hover { color: var(--bad); background: var(--bad-soft); }
 .empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 36px 16px; color: var(--faint); border: 1px dashed var(--line); border-radius: var(--r); font-family: var(--mono); font-size: 12px; text-align: center; }
 .empty svg { width: 24px; height: 24px; }
 

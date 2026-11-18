@@ -16,6 +16,7 @@ pub mod fsutil;
 pub mod hosts;
 pub mod manifest;
 pub mod migrate;
+pub mod mysql56_import;
 pub mod packages;
 pub mod paths;
 pub mod platform;

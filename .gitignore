@@ -25,3 +25,4 @@ ATURAN.md
 .mcp.json
 .cursor/
 .aider*
+.env
