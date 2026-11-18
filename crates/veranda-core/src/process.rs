@@ -122,6 +122,14 @@ fn refreshed(pid: u32) -> Option<System> {
     Some(sys)
 }
 
+/// Program file of a live process; None when it is gone or not readable.
+pub fn pid_exe(pid: u32) -> Option<PathBuf> {
+    refreshed(pid)?
+        .process(Pid::from_u32(pid))?
+        .exe()
+        .map(Path::to_path_buf)
+}
+
 pub fn is_pid_alive(pid: u32) -> bool {
     refreshed(pid)
         .map(|s| s.process(Pid::from_u32(pid)).is_some())

@@ -424,6 +424,11 @@
             <span class="sub mono" id="free-space-status"></span>
           </div>
           <div id="free-space-report" class="report hidden"></div>
+          <div id="engine-data" class="hidden">
+            <h3 data-i18n="engineData.title">Data of the inactive database engine</h3>
+            <p class="sub" data-i18n="engineData.hint">Left in the data folder after switching between MariaDB and MySQL. Delete it only after its databases were copied to the active engine.</p>
+            <div id="engine-data-list"></div>
+          </div>
         </section>
         <section class="card" id="modules-card">
           <h2 data-i18n="settings.modules">Modules</h2>
@@ -631,6 +636,19 @@
   </form>
 </dialog>
 
+<dialog id="dlg-engine-data">
+  <form method="dialog" id="form-engine-data">
+    <h2 id="engine-data-title"></h2>
+    <p class="sub" id="engine-data-text"></p>
+    <label class="check"><input type="radio" name="backup" value="1" checked><span data-i18n="engineData.backupThenDelete">Back up, then delete (recommended)</span></label>
+    <label class="check"><input type="radio" name="backup" value="0"><span data-i18n="engineData.deleteOnly">Delete without a backup</span></label>
+    <label><span id="engine-data-type"></span><input name="confirm" autocomplete="off" spellcheck="false" required></label>
+    <div class="actions-row">
+      <button type="button" class="btn" id="btn-engine-data-cancel" data-i18n="btn.cancel">Cancel</button>
+      <button type="submit" class="btn danger" id="btn-engine-data-ok" data-i18n="engineData.delete">Delete data</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- ============ Remote dialogs ============ -->
 <dialog id="dlg-host" class="wide">

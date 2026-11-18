@@ -80,6 +80,21 @@ finished while nobody was looking can still be checked on the Logs page. Databas
 name in the running engine are replaced. If the root password was changed after the switch, the
 old engine still has the previous one; type it in the password field.
 
+### MySQL 5.6 (end of life, Linux x86_64)
+MySQL 5.6 receives no security fixes since 2021; the version list marks it **unsupported** and
+shows a warning. Use it only for legacy projects. It keeps its data in its own folder,
+`data/mysql-5.6`, and never opens `data/mysql` (Veranda refuses to start it on a folder written
+by MySQL 8.0 or newer). The download is checked against the MD5 published next to the archive.
+The data folder is created with `mysql_install_db`, the root password is set with
+`SET PASSWORD … = PASSWORD(…)`, and the server listens on `127.0.0.1` only.
+
+It needs system libraries: `sudo apt install libaio1 libnuma1 perl libncurses5` (on Ubuntu
+24.04 and newer the first package is `libaio1t64`; Veranda links `libaio.so.1` inside the
+package itself). `libncurses5` (which brings `libtinfo5`) is gone from Ubuntu 24.04 and newer;
+install the `libtinfo5` and `libncurses5` `.deb` files from the Ubuntu 23.04 archive, or, at your
+own discretion, link `libncursesw.so.6`/`libtinfo.so.6` as `libncurses.so.5`/`libtinfo.so.5` in
+`/usr/lib/x86_64-linux-gnu` (works for the client in most cases, not guaranteed).
+
 ## 5. Logs
 
 The **Activity** box lists what Veranda itself did (started, stopped, installed, errors). The
@@ -141,6 +156,17 @@ plain-text SQL backups, deletes leftover downloads and trims logs above 20 MB. D
 projects and settings are never touched. New packages are slimmed the same way as they are
 installed ("Slim packages" in General). Backups are written gzip-compressed (`.sql.gz`);
 `veranda db import` and move bundles read both forms. From the terminal: `veranda clean`.
+
+**Data of the inactive database engine.** After switching between MariaDB and MySQL, the old
+engine's folder stays in `data/` (copy its databases first with **Migrate** → "Veranda MariaDB →
+MySQL"). The Storage card lists that folder with its size and a **Delete data** button. The
+button appears only while that engine is not running and is not the active engine, and Veranda
+refuses the deletion itself in those cases too. Deleting asks twice: a warning, then a dialog
+where you pick **Back up, then delete** (the default: the folder is packed into
+`backups/<engine>-data-<time>.tar.gz`; nothing is deleted if that fails) or **Delete without a
+backup**, and type the engine name (`mariadb` or `mysql`). Only a real folder directly inside
+`data/` is deleted; links and paths outside it are refused. To restore, stop the database, unpack
+the archive into `data/` and switch back to that engine.
 
 ### Move to another computer
 **Create bundle** packs everything personal into one `.veranda-move` file protected by a
@@ -234,8 +260,11 @@ Under the bar of an SSH terminal a thin strip shows **CPU**, **RAM** and **Disk*
 server plus its uptime. Disk is the fullest local filesystem (the one that runs out first; its
 mount is shown when it is not `/`); hover it for every mount and the all-disks total that cloud
 consoles usually report, which is why their percentage can be lower; the all-disks figure is shown next to it when the
-server has more than one disk. CPU is a one-second average measured at each reading; RAM is total
-minus available, so consoles that count cache as used show more. Values are read from `/proc` and `df` on the existing connection every 2 seconds
+server has more than one disk. CPU is a one-second average measured at each reading. RAM, like
+cloud consoles such as Alibaba Cloud, is `MemTotal − MemAvailable`, shown as a share of `MemTotal`
+(htop shows less because it leaves out all cache). The Disk tile is `used / (used + available)`
+rounded up to a whole percent, the same as the `Capacity` column of `df -P`; its tooltip keeps one
+decimal. Values are read from `/proc` and `df` on the existing connection every 2 seconds
 while that terminal is the visible one. It costs the server one tiny command and the app nothing
 noticeable; nothing runs while the tab is hidden. Click the strip to hide it; the terminal
 settings (gear button) have a checkbox to bring it back. Servers

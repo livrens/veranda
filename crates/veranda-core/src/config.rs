@@ -457,6 +457,16 @@ impl Config {
         }
     }
 
+    /// Data directory for the installed `version`. MySQL 5.6 always gets its own
+    /// `data/mysql-5.6`, so it never opens a directory written by a newer server.
+    pub fn db_data_dir_for(&self, layout: &Layout, version: &str) -> PathBuf {
+        if self.db.engine.is_mysql56(version) {
+            layout.data().join("mysql-5.6")
+        } else {
+            self.db_data_dir(layout)
+        }
+    }
+
     pub fn pg_data_dir(&self, layout: &Layout) -> PathBuf {
         if self.pg.data_dir.trim().is_empty() {
             layout.data().join("postgres")
@@ -489,6 +499,11 @@ impl DbEngine {
             DbEngine::MariaDb => "mariadb",
             DbEngine::MySql => "mysql",
         }
+    }
+
+    /// MySQL 5.6 (end of life) predates `--initialize`, `ALTER USER` and `--ssl-mode`.
+    pub fn is_mysql56(&self, version: &str) -> bool {
+        *self == DbEngine::MySql && version.trim().starts_with("5.6.")
     }
 }
 

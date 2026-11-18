@@ -559,12 +559,14 @@
     // each tooltip opens with the formula behind the figure
     const coreT = st.cpus?.length ? `\n${t("rm.statsPerCore")}: ${st.cpus.map(fmtPct).join("  ")}` : "";
     const cpuT = `${t("rm.statsFxCpu")}\n${t("rm.statsCpuNote")}${cores ? ` · ${cores} ${t("rm.statsCores")}` : ""}${coreT}\n${t("rm.statsSourceNote")}`;
-    const memPct = st.mem_total_kb ? (st.mem_used_kb / st.mem_total_kb) * 100 : null;
+    // used = MemTotal − MemAvailable, as cloud consoles count it
+    const memUsed = st.mem_total_kb && st.mem_avail_kb != null ? Math.max(0, st.mem_total_kb - st.mem_avail_kb) : st.mem_used_kb;
+    const memPct = st.mem_total_kb ? (memUsed / st.mem_total_kb) * 100 : null;
     const cachePct = st.mem_total_kb && st.mem_cache_kb != null ? (st.mem_cache_kb / st.mem_total_kb) * 100 : null;
-    const memT = st.mem_total_kb ? [t("rm.statsFxMem"), t("rm.statsFxCache"), `${t("rm.statsUsed")}: ${fmtG(st.mem_used_kb)} ${of} ${fmtG(st.mem_total_kb)} (${fmtPct(memPct)})`,
+    const memT = st.mem_total_kb ? [t("rm.statsFxMem"), t("rm.statsFxCache"), `${t("rm.statsUsed")}: ${fmtG(memUsed)} ${of} ${fmtG(st.mem_total_kb)} (${fmtPct(memPct)})`,
       cachePct != null ? `${t("rm.statsCache")}: ${fmtG(st.mem_cache_kb)} (${fmtPct(cachePct)})` : "",
       st.mem_avail_kb != null ? `${t("rm.statsAvail")}: ${fmtG(st.mem_avail_kb)}` : "", t("rm.statsMemNote")].filter(Boolean).join("\n") : "";
-    const memD = st.mem_total_kb ? `${fmtG(st.mem_used_kb)} / ${fmtG(st.mem_total_kb)}` : "";
+    const memD = st.mem_total_kb ? `${fmtG(memUsed)} / ${fmtG(st.mem_total_kb)}` : "";
     const swapPct = st.swap_total_kb ? (st.swap_used_kb / st.swap_total_kb) * 100 : null;
     const swapT = swapPct != null ? `${t("rm.statsFxSwap")}\n${t("rm.statsUsed")}: ${fmtG(st.swap_used_kb)} ${of} ${fmtG(st.swap_total_kb)} (${fmtPct(swapPct)})` : "";
     const diskPct = st.disk_total_kb ? dfPct({ used_kb: st.disk_used_kb, avail_kb: st.disk_avail_kb || 0, total_kb: st.disk_total_kb }) : null;
@@ -572,10 +574,10 @@
     const loadPct = st.load1 != null && cores ? (st.load1 / cores) * 100 : null;
     const loadT = st.load1 != null ? `${t("rm.statsFxLoad")}\n${t("rm.statsLoadAvg")}: ${st.load1.toFixed(2)} · ${(st.load5 ?? 0).toFixed(2)} · ${(st.load15 ?? 0).toFixed(2)}${cores ? ` · ${cores} ${t("rm.statsCores")}` : ""}` : "";
     box.innerHTML = tile("cpu", "CPU", st.cpu, st.cpu == null ? "…" : fmtPct(st.cpu), "", cpuT, null, st.cpus?.length <= 16 ? st.cpus : null)
-      + tile("mem", "RAM", memPct, fmtPct(memPct), memD, memT, st.mem_total_kb ? [{ pct: memPct }, { pct: cachePct ?? 0, cls: "cache" }] : null)
+      + tile("mem", "RAM", memPct, fmtPct(memPct), memD, memT, st.mem_total_kb ? [{ pct: memPct }, { pct: Math.min(cachePct ?? 0, 100 - clamp(memPct)), cls: "cache" }] : null)
       + (cachePct != null ? tile("cache", t("rm.statsCacheShort"), cachePct, fmtPct(cachePct), fmtG(st.mem_cache_kb), memT) : "")
       + (swapPct != null ? tile("swap", "Swap", swapPct, fmtPct(swapPct), `${fmtG(st.swap_used_kb)} / ${fmtG(st.swap_total_kb)}`, swapT) : "")
-      + tile("disk", "Disk", diskPct, fmtPct(diskPct), st.disk_total_kb ? `${st.disk_mount || "/"} · ${fmtG(st.disk_avail_kb || 0)} ${t("rm.statsFree")}` : "", diskT)
+      + tile("disk", "Disk", diskPct, diskPct == null || !isFinite(diskPct) ? "—" : `${Math.ceil(diskPct)}%`, st.disk_total_kb ? `${st.disk_mount || "/"} · ${fmtG(st.disk_avail_kb || 0)} ${t("rm.statsFree")}` : "", diskT)
       + (st.load1 != null ? tile("load", t("rm.statsLoad"), loadPct, loadPct != null ? fmtPct(loadPct) : st.load1.toFixed(2), loadPct != null ? `${st.load1.toFixed(2)} / ${cores}` : "", loadT) : "")
       + (st.procs_total != null ? tile("tasks", t("rm.statsTasks"), null, String(st.procs_total), st.procs_running != null ? `${st.procs_running} ${t("rm.statsRunning")}` : "", `${t("rm.statsFxTasks")}\n${t("rm.statsTasksNote")}`) : "")
       + (st.uptime_secs ? tile("up", t("rm.statsUp"), null, fmtUp(st.uptime_secs), "", `${t("rm.statsFxUp")}\n${t("rm.statsUpNote")}`) : "");

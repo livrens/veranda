@@ -40,8 +40,8 @@ impl DbCtx {
         Some(Self {
             engine,
             port: app.config.db.port,
+            data_dir: app.config.db_data_dir_for(&app.layout, &pkg.version),
             pkg,
-            data_dir: app.config.db_data_dir(&app.layout),
             layout: app.layout.clone(),
         })
     }
@@ -54,6 +54,31 @@ impl DbCtx {
         Binaries::db_server(&self.pkg, self.engine)
     }
 
+    pub fn is_mysql56(&self) -> bool {
+        self.engine.is_mysql56(&self.pkg.version)
+    }
+
+    /// Command for one of this package's programs. MySQL 5.6 binaries carry no RUNPATH, so the
+    /// libaio shim in `lib/private` (see `ensure_runtime_libs`) goes on the loader path.
+    pub fn cmd<S: AsRef<std::ffi::OsStr>>(&self, program: S) -> Command {
+        let mut cmd = crate::process::new_cmd(program);
+        self.apply_lib_path(&mut cmd);
+        cmd
+    }
+
+    pub fn apply_lib_path(&self, cmd: &mut Command) {
+        if !cfg!(target_os = "linux") || !self.is_mysql56() {
+            return;
+        }
+        let mut dirs = vec![self.pkg.path.join("lib").join("private")];
+        if let Some(cur) = std::env::var_os("LD_LIBRARY_PATH") {
+            dirs.extend(std::env::split_paths(&cur));
+        }
+        if let Ok(v) = std::env::join_paths(dirs) {
+            cmd.env("LD_LIBRARY_PATH", v);
+        }
+    }
+
     /// Arguments every client tool gets first: ignore the user's own ~/.my.cnf (which may carry a
     /// password for another server) and skip TLS on loopback (MariaDB 11.4+ clients require it
     /// by default and the local server has no certificate).
@@ -62,6 +87,7 @@ impl DbCtx {
         let mut v = vec![format!("--defaults-file={}", conf.display())];
         match self.engine {
             DbEngine::MariaDb => v.push("--skip-ssl".into()),
+            DbEngine::MySql if self.is_mysql56() => v.push("--skip-ssl".into()),
             // caching_sha2_password needs a secure channel for the first login after a server
             // start; without TLS that is the RSA key exchange, which the client only does when
             // asked. Otherwise every cold connection fails with ERROR 2061.
@@ -74,7 +100,7 @@ impl DbCtx {
     }
 
     fn client(&self, password: Option<&str>) -> Command {
-        let mut cmd = crate::process::new_cmd(Binaries::db_client(&self.pkg, self.engine));
+        let mut cmd = self.cmd(Binaries::db_client(&self.pkg, self.engine));
         cmd.args(self.client_base_args());
         cmd.args([
             "--protocol=tcp",
@@ -167,8 +193,23 @@ pub fn initialize(db: &DbCtx) -> Result<()> {
             cmd.current_dir(&db.pkg.path);
             process::run_capture(cmd).context("mariadb-install-db")?;
         }
+        // 5.6 has no --initialize; its Perl script creates root with an empty password.
+        DbEngine::MySql if db.is_mysql56() => {
+            let tool = db.pkg.path.join("scripts").join("mysql_install_db");
+            if !tool.is_file() {
+                bail!("scripts/mysql_install_db not found in the MySQL 5.6 package");
+            }
+            let mut cmd = db.cmd(&tool);
+            cmd.arg("--no-defaults")
+                .arg(format!("--basedir={}", db.pkg.path.display()))
+                .arg(format!("--datadir={}", db.data_dir.display()))
+                .arg("--keep-my-cnf")
+                .arg("--skip-name-resolve")
+                .current_dir(&db.pkg.path);
+            process::run_capture(cmd).context("mysql_install_db")?;
+        }
         DbEngine::MySql => {
-            let mut cmd = crate::process::new_cmd(db.server_binary());
+            let mut cmd = db.cmd(db.server_binary());
             cmd.arg("--initialize-insecure")
                 .arg(format!("--basedir={}", db.pkg.path.display()))
                 .arg(format!("--datadir={}", db.data_dir.display()))
@@ -201,6 +242,11 @@ pub fn set_root_password(db: &DbCtx, current: Option<&str>, new: &str) -> Result
     let sql = match db.engine {
         DbEngine::MariaDb => format!(
             "ALTER USER 'root'@'localhost' IDENTIFIED BY '{q}';\nCREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '{q}';\nGRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;\nALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '{q}';\nFLUSH PRIVILEGES;"
+        ),
+        // 5.6 has no ALTER USER ... IDENTIFIED BY. mysql_install_db also leaves anonymous users,
+        // root on ::1 and on the host name, and an open `test` database; those are removed.
+        DbEngine::MySql if db.is_mysql56() => format!(
+            "GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;\nSET PASSWORD FOR 'root'@'localhost' = PASSWORD('{q}');\nSET PASSWORD FOR 'root'@'127.0.0.1' = PASSWORD('{q}');\nDELETE FROM mysql.user WHERE User = '' OR (User = 'root' AND Host NOT IN ('localhost', '127.0.0.1'));\nDELETE FROM mysql.db WHERE Db = 'test' OR Db = 'test\\\\_%';\nDROP DATABASE IF EXISTS test;\nFLUSH PRIVILEGES;"
         ),
         DbEngine::MySql => format!(
             "ALTER USER 'root'@'localhost' IDENTIFIED BY '{q}';\nCREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '{q}';\nGRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;\nALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '{q}';\nFLUSH PRIVILEGES;"
@@ -275,7 +321,7 @@ pub fn dump_user_databases(db: &DbCtx, dest: &std::path::Path) -> Result<Vec<Str
         return Ok(names);
     }
     let file = std::fs::File::create(dest)?;
-    let mut cmd = crate::process::new_cmd(Binaries::db_dump(&db.pkg, db.engine));
+    let mut cmd = db.cmd(Binaries::db_dump(&db.pkg, db.engine));
     cmd.args(db.client_base_args());
     cmd.args([
         "--protocol=tcp",
@@ -315,7 +361,7 @@ pub fn import_file(db: &DbCtx, file: &std::path::Path) -> Result<()> {
     let pw = root_password(&db.layout)?.context("root password unknown")?;
     let input = std::fs::File::open(file).with_context(|| format!("opening {}", file.display()))?;
     let gzip = file.extension().is_some_and(|x| x == "gz");
-    let mut cmd = crate::process::new_cmd(Binaries::db_client(&db.pkg, db.engine));
+    let mut cmd = db.cmd(Binaries::db_client(&db.pkg, db.engine));
     cmd.args(db.client_base_args());
     cmd.args([
         "--protocol=tcp",
@@ -354,7 +400,7 @@ pub fn import_file(db: &DbCtx, file: &std::path::Path) -> Result<()> {
 /// Dump every database into `dest` (plain SQL).
 pub fn dump_all(db: &DbCtx, dest: &std::path::Path) -> Result<()> {
     let pw = root_password(&db.layout)?.context("root password unknown")?;
-    let mut cmd = crate::process::new_cmd(Binaries::db_dump(&db.pkg, db.engine));
+    let mut cmd = db.cmd(Binaries::db_dump(&db.pkg, db.engine));
     cmd.args(db.client_base_args());
     cmd.args([
         "--protocol=tcp",
@@ -420,7 +466,7 @@ fn run_dump_to(mut cmd: Command, dest: &std::path::Path) -> Result<()> {
 }
 
 pub fn shutdown(db: &DbCtx, password: &str) -> Result<()> {
-    let mut cmd = crate::process::new_cmd(Binaries::db_admin(&db.pkg, db.engine));
+    let mut cmd = db.cmd(Binaries::db_admin(&db.pkg, db.engine));
     cmd.args(db.client_base_args());
     cmd.args([
         "--protocol=tcp",

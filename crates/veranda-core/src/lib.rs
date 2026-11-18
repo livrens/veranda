@@ -10,6 +10,7 @@ pub mod backup;
 pub mod config;
 pub mod db;
 pub mod download;
+pub mod engine_data;
 pub mod files;
 pub mod fsutil;
 pub mod hosts;

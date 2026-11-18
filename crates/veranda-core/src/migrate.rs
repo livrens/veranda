@@ -448,10 +448,11 @@ fn import_sites(
     Ok(())
 }
 
-fn source_client_args(engine: DbEngine, req: &Request) -> Vec<String> {
+fn source_client_args(tools: &DbCtx, req: &Request) -> Vec<String> {
     let mut v = vec!["--no-defaults".to_string()];
-    match engine {
+    match tools.engine {
         DbEngine::MariaDb => v.push("--skip-ssl".into()),
+        DbEngine::MySql if tools.is_mysql56() => v.push("--skip-ssl".into()),
         DbEngine::MySql => {
             v.push("--ssl-mode=DISABLED".into());
             v.push("--get-server-public-key".into());
@@ -481,8 +482,8 @@ fn source_client_args(engine: DbEngine, req: &Request) -> Vec<String> {
 }
 
 fn list_source_databases(db: &DbCtx, req: &Request) -> Result<Vec<String>> {
-    let mut cmd = crate::process::new_cmd(Binaries::db_client(&db.pkg, db.engine));
-    cmd.args(source_client_args(db.engine, req))
+    let mut cmd = db.cmd(Binaries::db_client(&db.pkg, db.engine));
+    cmd.args(source_client_args(db, req))
         .args(["-N", "-B", "-e", "SHOW DATABASES"])
         .env("MYSQL_PWD", &req.db_password)
         .stdin(Stdio::null());
@@ -515,8 +516,8 @@ fn source_db_sizes(
         .map(|n| format!("'{}'", n.replace('\'', "''")))
         .collect::<Vec<_>>()
         .join(",");
-    let mut cmd = crate::process::new_cmd(Binaries::db_client(&db.pkg, db.engine));
-    cmd.args(source_client_args(db.engine, req))
+    let mut cmd = db.cmd(Binaries::db_client(&db.pkg, db.engine));
+    cmd.args(source_client_args(db, req))
         .args(["-N", "-B", "-e", &format!("SELECT table_schema, COALESCE(SUM(data_length + index_length), 0) FROM information_schema.tables WHERE table_schema IN ({list}) GROUP BY table_schema")])
         .env("MYSQL_PWD", &req.db_password)
         .stdin(Stdio::null());
@@ -699,8 +700,8 @@ fn transfer_database(
     control: &Control,
     on_bytes: &dyn Fn(u64),
 ) -> Result<()> {
-    let mut dump = crate::process::new_cmd(Binaries::db_dump(&tools.pkg, tools.engine));
-    dump.args(source_client_args(tools.engine, req))
+    let mut dump = tools.cmd(Binaries::db_dump(&tools.pkg, tools.engine));
+    dump.args(source_client_args(tools, req))
         .args([
             "--databases",
             name,
@@ -716,7 +717,7 @@ fn transfer_database(
         .stderr(Stdio::piped());
     let mut dump = dump.spawn().context("starting mysqldump")?;
     let pipe = dump.stdout.take().context("dump pipe")?;
-    let mut load = crate::process::new_cmd(Binaries::db_client(&db.pkg, db.engine));
+    let mut load = db.cmd(Binaries::db_client(&db.pkg, db.engine));
     load.args(db.client_base_args())
         .args([
             "--protocol=tcp",
@@ -904,19 +905,31 @@ fn import_databases(
     Ok(())
 }
 
-fn engine_name(e: DbEngine) -> &'static str {
+/// Process name of the temporary server that runs the inactive engine during an import.
+pub(crate) const MIGRATE_INSTANCE: &str = "db-migrate";
+
+pub(crate) fn engine_name(e: DbEngine) -> &'static str {
     match e {
         DbEngine::MariaDb => "MariaDB",
         DbEngine::MySql => "MySQL",
     }
 }
 
-fn engine_by_id(id: &str) -> Option<DbEngine> {
+pub(crate) fn engine_by_id(id: &str) -> Option<DbEngine> {
     match id {
         "mariadb" => Some(DbEngine::MariaDb),
         "mysql" => Some(DbEngine::MySql),
         _ => None,
     }
+}
+
+/// Newest package that can open `data/<engine>`. MySQL 5.6 keeps its own folder and must never
+/// be started on the data of a newer server.
+fn stored_engine_pkg(reg: &Registry, engine: DbEngine) -> Option<crate::packages::Installed> {
+    reg.list(crate::services::db::kind(engine))
+        .into_iter()
+        .find(|i| !engine.is_mysql56(&i.version))
+        .cloned()
 }
 
 /// The data of Veranda's *other* engine (MariaDB while MySQL is active, or the reverse), offered
@@ -936,7 +949,7 @@ pub fn detect_veranda(app: &Veranda) -> Vec<Source> {
         if !data.join("mysql").is_dir() {
             continue;
         }
-        let installed = reg.newest(crate::services::db::kind(engine)).is_some();
+        let installed = stored_engine_pkg(&reg, engine).is_some();
         v.push(Source {
             platform: format!("veranda:{}", engine.id()),
             label: format!(
@@ -971,7 +984,7 @@ fn import_from_engine(
     progress: &dyn Fn(Progress),
 ) -> Result<()> {
     let say = |m: String| progress(Progress::msg(m));
-    const INSTANCE: &str = "db-migrate";
+    const INSTANCE: &str = MIGRATE_INSTANCE;
     let layout = &app.layout;
     let reg = Registry::load(layout)?;
     let target =
@@ -985,10 +998,7 @@ fn import_from_engine(
             engine_name(target.engine)
         );
     }
-    let pkg = reg
-        .newest(crate::services::db::kind(engine))
-        .cloned()
-        .with_context(|| {
+    let pkg = stored_engine_pkg(&reg, engine).with_context(|| {
             format!(
                 "{} is not installed any more; install it from the sidebar (Versions tab) and try again",
                 engine_name(engine)
@@ -1107,9 +1117,9 @@ fn import_from_engine(
     };
     let result = work();
     say("Stopping the temporary server…".into());
-    let mut shutdown = crate::process::new_cmd(Binaries::db_client(&src.pkg, src.engine));
+    let mut shutdown = src.cmd(Binaries::db_client(&src.pkg, src.engine));
     shutdown
-        .args(source_client_args(src.engine, &source_req))
+        .args(source_client_args(&src, &source_req))
         .args(["-e", "SHUTDOWN"])
         .env("MYSQL_PWD", &root_pw)
         .stdin(Stdio::null());

@@ -1192,6 +1192,34 @@ async fn storage_usage(
         .map_err(err)
 }
 
+/// Data folders of the inactive database engine, with size and running state.
+#[tauri::command]
+async fn engine_data_list(
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<veranda_core::engine_data::EngineData>> {
+    let app = open_app(&state)?;
+    tauri::async_runtime::spawn_blocking(move || veranda_core::engine_data::list(&app))
+        .await
+        .map_err(err)
+}
+
+/// Delete an inactive engine's data folder; the core re-checks every condition.
+#[tauri::command]
+async fn engine_data_remove(
+    state: State<'_, AppState>,
+    engine: String,
+    confirm: String,
+    backup: bool,
+) -> CmdResult<veranda_core::engine_data::RemoveReport> {
+    let app = open_app(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        veranda_core::engine_data::remove(&app, &engine, &confirm, backup)
+    })
+    .await
+    .map_err(err)?
+    .map_err(err)
+}
+
 /// One-click cleanup: prune installed packages, gzip old backups, delete leftovers, trim logs.
 #[tauri::command]
 async fn free_space(
@@ -2251,6 +2279,8 @@ pub fn run() {
             db_set_password,
             db_backup,
             storage_usage,
+            engine_data_list,
+            engine_data_remove,
             free_space,
             ssl_trust,
             open_target,

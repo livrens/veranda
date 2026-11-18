@@ -170,6 +170,7 @@ svg.logo path { fill: currentColor; }
 .pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
 .pill.ok { background: var(--ok-soft); color: var(--ok); }
 .pill.accent { background: var(--accent-soft); color: var(--accent); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
 .pill select { background: transparent; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; height: auto; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .chip { padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-family: var(--mono); font-size: 12px; }
@@ -214,6 +215,7 @@ svg.logo path { fill: currentColor; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .notice { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--r); background: var(--accent-soft); color: var(--accent); font-weight: 600; margin-bottom: 12px; }
 .notice svg { width: 18px; height: 18px; }
+.notice.warn { background: var(--warn-soft); color: var(--warn); }
 
 /* versions table */
 .vhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; color: var(--muted); font-size: 12.5px; }

@@ -619,6 +619,8 @@ function openService(kind) {
   showTab("service");
   if (!upstream && !upstreamLoading) loadUpstream();
 }
+// Versions without upstream security fixes; still installable for legacy projects.
+const isEol = (kind, v) => kind === "mysql" && String(v || "").startsWith("5.6.");
 function versionsFor(kind) {
   const ups = upstream ? upstream.filter((p) => p.kind === kind) : [];
   const built = builtin ? builtin.filter((p) => p.kind === kind) : [];
@@ -663,6 +665,7 @@ function renderService() {
     if (!isActive(kind)) notice = `<div class="notice">${ICONS.info}<span>${t("svc.offAlt", { name: m.label, role: t(SVC_ROLE[m.svc] || "role.service") })}</span></div>`;
     else if (!on) notice = `<div class="notice">${ICONS.info}<span>${t("svc.offHint")}</span></div>`;
     else if (st && !st.installed) notice = `<div class="notice">${ICONS.info}<span>${t("svc.installHint")}</span></div>`;
+    if (st && st.installed && isEol(kind, st.version)) notice += `<div class="notice warn">${ICONS.info}<span>${t("ver.eolWarn", { name: m.label, version: st.version })}</span></div>`;
     const ver = st
       ? inst.length > 1
         ? `<select class="small" data-version-kind="${kind}" data-service="${m.svc}">${inst.map((v) => `<option ${v === st.version ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>`
@@ -709,7 +712,8 @@ function renderService() {
       const isInstalling = installing && installing.kind === kind && installing.version === v;
       const isRemoving = removing && removing.kind === kind && removing.version === v;
       const isNodeDef = kind === "node" && isInst && nodeDefault() === v;
-      const status = inUse ? `<span class="state on"><i></i>${t("ver.inUse")}</span>` : isNodeDef ? `<span class="state on"><i></i>${t("ver.default")}</span>` : isInst ? `<span class="pill ok">${t("ver.installed")}</span>` : v === newest ? `<span class="pill accent">${t("ver.newest")}</span>` : "";
+      const eol = isEol(kind, v) ? ` <span class="pill warn" title="${esc(t("ver.eolWarn", { name: m.label, version: v }))}">${t("ver.eol")}</span>` : "";
+      const status = (inUse ? `<span class="state on"><i></i>${t("ver.inUse")}</span>` : isNodeDef ? `<span class="state on"><i></i>${t("ver.default")}</span>` : isInst ? `<span class="pill ok">${t("ver.installed")}</span>` : v === newest ? `<span class="pill accent">${t("ver.newest")}</span>` : "") + eol;
       const nodeDefBtn = kind === "node" && isInst && !isNodeDef && !isInstalling && !isRemoving ? `<button class="btn small" data-node-default="${esc(v)}" title="${t("ver.defaultHint")}">${ICONS.check}<span>${t("btn.setDefault")}</span></button>` : "";
       const action = isInstalling ? progressMarkup(installing)
         : isRemoving ? `<span class="state busy">${ICONS.spinner}${t("pkg.removing")}</span>`
@@ -954,6 +958,47 @@ async function renderStorage() {
     const total = u.reduce((a, x) => a + x.bytes, 0);
     box.innerHTML = u.filter((x) => x.bytes > 0 || x.id === "packages").map((x) => `<span class="pill"><b>${t(`storage.${x.id}`)}</b>${fmtBytes(x.bytes)}</span>`).join("") + `<span class="pill accent"><b>${t("storage.total")}</b>${fmtBytes(total)}</span>`;
   } catch (e) { box.innerHTML = ""; }
+  renderEngineData();
+}
+/* inactive engine data: the button is a convenience; the backend re-checks every condition */
+async function renderEngineData() {
+  const wrap = $("#engine-data"), list = $("#engine-data-list"); if (!wrap) return;
+  let items = [];
+  try { items = await invoke("engine_data_list"); } catch (e) { items = []; }
+  wrap.classList.toggle("hidden", !items.length);
+  list.innerHTML = items.map((x) => `<div class="btn-row"><span class="pill"><b>${esc(x.name)}</b>${fmtBytes(x.bytes)}</span>${x.running
+    ? `<span class="sub">${esc(t("engineData.running", { name: x.name }))}</span>`
+    : `<button type="button" class="btn danger" data-engine="${esc(x.engine)}" data-name="${esc(x.name)}"><i class="ic">${ICONS.trash}</i><span>${esc(t("engineData.delete"))}</span></button>`}</div>`).join("");
+  $$("button[data-engine]", list).forEach((b) => { b.onclick = () => removeEngineData(b.dataset.engine, b.dataset.name, b); });
+}
+async function removeEngineData(engine, name, btn) {
+  if (!await askConfirm(t("engineData.warn", { name }), t("engineData.continue"))) return;
+  const dlg = $("#dlg-engine-data"), f = $("#form-engine-data");
+  f.reset();
+  $("#engine-data-title").textContent = t("engineData.confirmTitle", { name });
+  $("#engine-data-text").textContent = t("engineData.confirmText", { name });
+  $("#engine-data-type").textContent = t("engineData.typeName", { id: engine });
+  f.elements.confirm.placeholder = engine;
+  const ok = await new Promise((resolve) => {
+    const done = (v) => { dlg.close(); resolve(v); };
+    f.onsubmit = (ev) => {
+      ev.preventDefault();
+      if (f.elements.confirm.value.trim().toLowerCase() !== engine) { toast(t("engineData.typeMismatch", { id: engine }), "bad"); return; }
+      done(true);
+    };
+    $("#btn-engine-data-cancel").onclick = () => done(false);
+    dlg.oncancel = (ev) => { ev.preventDefault(); done(false); };
+    dlg.showModal();
+  });
+  if (!ok) return;
+  const backup = f.elements.backup.value === "1";
+  btn.disabled = true; $("#free-space-status").textContent = t(backup ? "engineData.backingUp" : "engineData.deleting");
+  try {
+    const r = await invoke("engine_data_remove", { engine, confirm: f.elements.confirm.value, backup });
+    toast(r.backup ? t("engineData.doneBackup", { name, size: fmtBytes(r.freed), file: r.backup }) : t("engineData.done", { name, size: fmtBytes(r.freed) }), "ok");
+  } catch (e) { fail(e); }
+  $("#free-space-status").textContent = "";
+  renderStorage();
 }
 listen("clean-progress", (ev) => { $("#free-space-status").textContent = ev.payload; });
 $("#btn-free-space").onclick = async () => {

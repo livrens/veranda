@@ -175,6 +175,17 @@ arch = "x86_64"
 source = "mysql.com"
 parts = [{ url = "https://cdn.mysql.com/Downloads/MySQL-9.7/mysql-9.7.4-winx64.zip", archive = "zip", checksum = { algo = "md5", hex = "e05aaa40639d8548e0f68b7a70685a3b" }, strip = 1 }]
 
+# MySQL 5.6 is end of life (no security fixes since 2021); kept for legacy projects, Linux x86_64
+# only. Its data lives in data/mysql-5.6. The MD5 is read from the archive's .md5 file at download.
+[[packages]]
+kind = "mysql"
+version = "5.6.51"
+os = "linux"
+arch = "x86_64"
+source = "mysql.com (archive)"
+notes = "end of life"
+parts = [{ url = "https://cdn.mysql.com/archives/mysql-5.6/mysql-5.6.51-linux-glibc2.12-x86_64.tar.gz", archive = "targz", checksum = { algo = "remote", url = "https://cdn.mysql.com/archives/mysql-5.6/mysql-5.6.51-linux-glibc2.12-x86_64.tar.gz.md5", name = "mysql-5.6.51-linux-glibc2.12-x86_64.tar.gz" }, strip = 1 }]
+
 # ---------------------------------------------------------------- Cache: Valkey (Linux), Redis for Windows (Windows). macOS: brew install valkey
 [[packages]]
 kind = "node"

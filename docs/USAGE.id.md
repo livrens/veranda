@@ -75,6 +75,23 @@ mematikannya lagi. Folder data lama tidak diubah, jadi Anda bisa kembali kapan s
 bernama sama di mesin yang berjalan akan diganti. Bila kata sandi root diubah setelah berpindah,
 mesin lama masih memakai kata sandi sebelumnya; ketik di kolom kata sandi.
 
+### MySQL 5.6 (tidak didukung lagi, Linux x86_64)
+MySQL 5.6 tidak mendapat perbaikan keamanan sejak 2021; daftar versi menandainya **tidak
+didukung lagi** dan menampilkan peringatan. Pakai hanya untuk proyek lama. Datanya disimpan di
+folder tersendiri, `data/mysql-5.6`, dan tidak pernah membuka `data/mysql` (Veranda menolak
+menjalankannya pada folder yang ditulis MySQL 8.0 atau yang lebih baru). Unduhan diperiksa
+dengan MD5 resmi yang terbit di samping arsipnya. Folder data dibuat dengan `mysql_install_db`,
+kata sandi root diatur dengan `SET PASSWORD … = PASSWORD(…)`, dan server hanya mendengarkan
+`127.0.0.1`.
+
+Pustaka sistem yang dibutuhkan: `sudo apt install libaio1 libnuma1 perl libncurses5` (di Ubuntu
+24.04 dan yang lebih baru paket pertama bernama `libaio1t64`; Veranda menautkan `libaio.so.1`
+di dalam paketnya sendiri). `libncurses5` (yang membawa `libtinfo5`) sudah tidak ada di Ubuntu
+24.04 dan yang lebih baru; pasang berkas `.deb` `libtinfo5` dan `libncurses5` dari arsip Ubuntu
+23.04, atau atas keputusan Anda sendiri tautkan `libncursesw.so.6`/`libtinfo.so.6` sebagai
+`libncurses.so.5`/`libtinfo.so.5` di `/usr/lib/x86_64-linux-gnu` (biasanya cukup untuk klien,
+tetapi tidak dijamin).
+
 Dialog menampilkan persentase (berbobot ukuran database), database yang sedang disalin, dan
 byte yang mengalir. Jendelanya boleh ditutup; tombol **Migrate** menampilkan kemajuannya dan
 membuka kembali dialog beserta hasilnya. **Jeda** menahan salinan (tidak ada yang hilang saat
@@ -144,6 +161,17 @@ mengompresi backup SQL lama, menghapus sisa unduhan, dan memangkas log di atas 2
 proyek, dan pengaturan tidak pernah disentuh. Paket baru diramping dengan cara yang sama saat
 dipasang ("Paket ramping" di General). Backup ditulis terkompresi gzip (`.sql.gz`); `veranda db
 import` dan paket pindahan membaca kedua bentuk. Dari terminal: `veranda clean`.
+
+**Data mesin database yang tidak aktif.** Setelah berpindah antara MariaDB dan MySQL, folder
+mesin lama tetap ada di `data/` (salin dulu databasenya lewat **Migrasi** → "Veranda MariaDB →
+MySQL"). Kartu Penyimpanan menampilkan folder itu beserta ukurannya dan tombol **Hapus data**.
+Tombol hanya muncul bila mesin itu tidak sedang berjalan dan bukan mesin aktif, dan Veranda
+sendiri juga menolak penghapusan dalam keadaan itu. Penghapusan meminta konfirmasi dua kali:
+peringatan, lalu dialog untuk memilih **Cadangkan lalu hapus** (bawaan: folder dikemas ke
+`backups/<mesin>-data-<waktu>.tar.gz`; bila gagal, tidak ada yang dihapus) atau **Hapus tanpa
+cadangan**, dan mengetik nama mesin (`mariadb` atau `mysql`). Hanya folder asli yang berada
+langsung di dalam `data/` yang dihapus; tautan dan path di luar folder itu ditolak. Untuk
+memulihkan, hentikan database, ekstrak arsip ke `data/`, lalu kembali ke mesin tersebut.
 
 ### Pindah ke komputer lain
 **Buat paket pindahan** mengemas semua yang bersifat pribadi ke satu file `.veranda-move` yang
@@ -238,7 +266,11 @@ Di bawah bilah terminal SSH ada strip tipis berisi **CPU**, **RAM**, dan **Disk*
 uptime-nya. Disk adalah filesystem lokal yang paling penuh (yang habis lebih dulu; nama mount
 ditampilkan bila bukan `/`); arahkan kursor untuk melihat tiap mount dan total semua disk yang
 biasanya dilaporkan konsol cloud, itulah sebabnya angka di sana bisa lebih rendah. CPU adalah
-rata-rata selama satu detik yang diukur pada tiap pembacaan. Nilainya dibaca
+rata-rata selama satu detik yang diukur pada tiap pembacaan. RAM dihitung seperti konsol cloud
+(misalnya Alibaba Cloud): `MemTotal − MemAvailable`, ditampilkan sebagai bagian dari `MemTotal`
+(htop menampilkan angka lebih kecil karena tidak menghitung cache). Ubin Disk adalah
+`terpakai / (terpakai + tersedia)` yang dibulatkan ke atas menjadi persen bulat, sama dengan kolom
+`Capacity` pada `df -P`; tooltip-nya tetap menampilkan satu angka desimal. Nilainya dibaca
 dari `/proc` dan `df` lewat koneksi yang sudah ada tiap 2 detik selama terminal itu terlihat;
 tidak ada yang berjalan saat tab tersembunyi. Klik strip untuk menyembunyikannya; pengaturan
 terminal (ikon roda gigi) punya kotak centang untuk menampilkannya lagi.

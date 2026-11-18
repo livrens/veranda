@@ -30,7 +30,7 @@ max_allowed_packet = 256M
 innodb_buffer_pool_size = 256M
 {{ENGINE_TUNING}}
 innodb_flush_log_at_trx_commit = 2
-innodb_flush_method = {{FLUSH_METHOD}}
+{{FLUSH_METHOD}}
 table_open_cache = 400
 tmp_table_size = 64M
 max_heap_table_size = 64M

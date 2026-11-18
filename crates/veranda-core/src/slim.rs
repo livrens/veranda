@@ -49,7 +49,7 @@ fn prunable(kind: Kind) -> &'static [&'static str] {
     }
 }
 
-fn dir_size(p: &Path) -> u64 {
+pub(crate) fn dir_size(p: &Path) -> u64 {
     if let Ok(meta) = std::fs::symlink_metadata(p) {
         if meta.is_file() {
             return meta.len();

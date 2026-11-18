@@ -69,8 +69,11 @@ pub fn write_conf(
             format!("socket = \"{}\"", Layout::slashes(socket)),
         )
     };
+    let mysql56 = db.is_mysql56();
     let extra_security = match db.engine {
         DbEngine::MariaDb => "".to_string(),
+        // 5.6 has no X plugin, keeps the binary log off by default and rejects the options below.
+        DbEngine::MySql if mysql56 => "".to_string(),
         // no X plugin, no binary log, a 32 MB redo log instead of MySQL's 100 MB default
         DbEngine::MySql => "mysqlx = OFF\nskip-log-bin\ninnodb_redo_log_capacity = 32M".to_string(),
     };
@@ -103,10 +106,13 @@ pub fn write_conf(
             ("EXTRA_SECURITY", extra_security),
             (
                 "FLUSH_METHOD",
-                if windows {
-                    "unbuffered".into()
+                // 5.6 knows neither `fsync` nor `unbuffered`; its default is fine.
+                if mysql56 {
+                    String::new()
+                } else if windows {
+                    "innodb_flush_method = unbuffered".into()
                 } else {
-                    "fsync".into()
+                    "innodb_flush_method = fsync".into()
                 },
             ),
         ],
@@ -149,7 +155,7 @@ pub fn status(ctx: &Ctx) -> ServiceStatus {
 /// The binaries carry `RUNPATH=$ORIGIN/../lib/private`; dropping a symlink there fixes it
 /// without touching the system. Missing entirely => a clear install hint.
 #[cfg(target_os = "linux")]
-pub fn ensure_runtime_libs(pkg_dir: &std::path::Path) -> Result<()> {
+fn find_system_lib(name: &str) -> Option<std::path::PathBuf> {
     const DIRS: [&str; 6] = [
         "/usr/lib/x86_64-linux-gnu",
         "/usr/lib/aarch64-linux-gnu",
@@ -158,11 +164,35 @@ pub fn ensure_runtime_libs(pkg_dir: &std::path::Path) -> Result<()> {
         "/lib/x86_64-linux-gnu",
         "/lib64",
     ];
-    let find = |name: &str| {
-        DIRS.iter()
-            .map(|d| std::path::Path::new(d).join(name))
-            .find(|p| p.exists())
-    };
+    DIRS.iter()
+        .map(|d| std::path::Path::new(d).join(name))
+        .find(|p| p.exists())
+}
+
+/// MySQL 5.6 also needs Perl (mysql_install_db) and the ncurses 5 ABI (the `mysql` client).
+#[cfg(target_os = "linux")]
+pub fn ensure_mysql56_deps() -> Result<()> {
+    if !std::path::Path::new("/usr/bin/perl").exists() {
+        bail!("MySQL 5.6 needs Perl to initialise its data directory: `sudo apt install perl`");
+    }
+    if find_system_lib("libncurses.so.5").is_none() {
+        bail!(
+            "the MySQL 5.6 client needs libncurses.so.5 and libtinfo.so.5: \
+             `sudo apt install libncurses5` (Ubuntu up to 23.10, Debian up to 12). \
+             Newer releases no longer ship it; see the MySQL 5.6 section of docs/USAGE.md"
+        );
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn ensure_mysql56_deps() -> Result<()> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub fn ensure_runtime_libs(pkg_dir: &std::path::Path) -> Result<()> {
+    let find = find_system_lib;
     let private = pkg_dir.join("lib").join("private");
     let shim = private.join("libaio.so.1");
     if shim.exists() || find("libaio.so.1").is_some() {
@@ -199,6 +229,16 @@ pub fn start(ctx: &Ctx) -> Result<()> {
     process::clear_pid(layout, PID);
     super::ensure_port_free(db.port, "the database")?;
     ensure_runtime_libs(&db.pkg.path)?;
+    if db.is_mysql56() {
+        ensure_mysql56_deps()?;
+        // mysql.ibd only exists in 8.0+ data directories, which 5.6 would damage.
+        if db.data_dir.join("mysql.ibd").exists() {
+            bail!(
+                "{} holds data of a newer MySQL; MySQL 5.6 will not open it",
+                db.data_dir.display()
+            );
+        }
+    }
     let needs_setup = !ready_marker(&db).exists();
     if !db.is_initialized() {
         crate::db::initialize(&db).context("initialising the database directory")?;
@@ -208,6 +248,7 @@ pub fn start(ctx: &Ctx) -> Result<()> {
         bail!("database server binary not found: {}", server.display());
     }
     let mut cmd = process::command(&server, &ctx.path_entries());
+    db.apply_lib_path(&mut cmd);
     cmd.arg(format!(
         "--defaults-file={}",
         conf_path(layout, db.engine).display()
