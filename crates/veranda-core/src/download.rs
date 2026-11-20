@@ -330,6 +330,7 @@ async fn download_once(
             } => {
                 let text = fetch_text(client, list_url).await?;
                 let want = find_in_checksum_file(&text, name)
+                    .or_else(|| lone_hash(&text))
                     .with_context(|| format!("{name} not found in {list_url}"))?;
                 match want.len() {
                     64 => expect_eq("sha256", &want, &got256, url),
@@ -398,6 +399,12 @@ pub fn find_in_checksum_file(text: &str, name: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// A per-file `.sha256` that holds only the hash, without a file name.
+fn lone_hash(text: &str) -> Option<String> {
+    let t = text.trim_start_matches('\u{feff}').trim();
+    (t.len() == 64 && t.chars().all(|c| c.is_ascii_hexdigit())).then(|| t.to_ascii_lowercase())
 }
 
 /// Persistent `url -> sha256` ledger.
@@ -479,5 +486,16 @@ mod tests {
             32
         );
         assert!(find_in_checksum_file(t3, "other.zip").is_none());
+    }
+
+    #[test]
+    fn lone_hash_only_without_names() {
+        let h = "ABCDEFabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd";
+        assert_eq!(
+            lone_hash(&format!("{h}\n")).unwrap(),
+            h.to_ascii_lowercase()
+        );
+        assert!(lone_hash(&format!("{h}  other.tar.gz")).is_none());
+        assert!(lone_hash("e05aaa40639d8548e0f68b7a70685a3b").is_none());
     }
 }

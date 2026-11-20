@@ -204,67 +204,92 @@ async fn php(c: &reqwest::Client, p: Platform) -> Result<Vec<Package>> {
             Ok(out)
         }
         _ => {
-            let text = fetch_text(
-                c,
-                "https://dl.static-php.dev/static-php-cli/bulk/?format=json",
-            )
-            .await?;
-            #[derive(Deserialize)]
-            struct Entry {
-                name: String,
-            }
-            let entries: Vec<Entry> = serde_json::from_str(&text)?;
-            let os = if p.os == Os::Macos { "macos" } else { "linux" };
-            let arch = match p.arch {
-                Arch::X86_64 => "x86_64",
-                Arch::Aarch64 => "aarch64",
-            };
-            let re = regex::Regex::new(&format!(
-                r"^php-(\d+\.\d+\.\d+)-(cli|fpm)-{os}-{arch}\.tar\.gz$"
-            ))?;
-            let mut have: std::collections::HashMap<String, u8> = Default::default();
-            for e in &entries {
-                if let Some(m) = re.captures(&e.name) {
-                    *have.entry(m[1].to_string()).or_default() += 1;
-                }
-            }
-            let base = "https://dl.static-php.dev/static-php-cli/bulk";
-            let mut out: Vec<Package> = have
-                .into_iter()
-                .filter(|(v, n)| *n == 2 && parse_version(v) >= parse_version("8.1"))
-                .map(|(v, _)| {
-                    pkg(
-                        Kind::Php,
-                        &v,
-                        p,
-                        "static-php.dev",
-                        vec![
-                            part(
-                                format!("{base}/php-{v}-cli-{os}-{arch}.tar.gz"),
-                                Checksum::Tofu,
-                                0,
-                            ),
-                            part(
-                                format!("{base}/php-{v}-fpm-{os}-{arch}.tar.gz"),
-                                Checksum::Tofu,
-                                0,
-                            ),
-                        ],
-                    )
-                })
-                .collect();
-            // Keep the newest 4 patch releases of every minor branch.
-            out.sort_by_key(|x| std::cmp::Reverse(parse_version(&x.version)));
-            let mut per_branch: std::collections::HashMap<String, usize> = Default::default();
-            out.retain(|x| {
-                let b = crate::manifest::version_branch(&x.version);
-                let n = per_branch.entry(b).or_default();
-                *n += 1;
-                *n <= 4
-            });
-            Ok(out)
+            let text = fetch_text(c, &format!("{STATIC_PHP_BULK}/?format=json")).await?;
+            static_php(&text, p)
         }
     }
+}
+
+const STATIC_PHP_BULK: &str = "https://dl.static-php.dev/static-php-cli/bulk";
+
+/// File names of a static-php.dev `?format=json` listing: a plain array, or an object wrapping one.
+fn listing_names(text: &str) -> Result<Vec<String>> {
+    let v: serde_json::Value =
+        serde_json::from_str(text).context("parsing static-php.dev listing")?;
+    let items = match &v {
+        serde_json::Value::Array(a) => a,
+        serde_json::Value::Object(o) => o
+            .values()
+            .find_map(|x| x.as_array())
+            .context("no file list in static-php.dev listing")?,
+        _ => bail!("unexpected static-php.dev listing"),
+    };
+    Ok(items
+        .iter()
+        .filter_map(|e| e.as_str().or_else(|| e.get("name")?.as_str()))
+        .map(|n| n.rsplit('/').next().unwrap_or(n).to_string())
+        .collect())
+}
+
+/// PHP builds with both cli and fpm for `p`, newest 4 patches of every branch from 8.1 on.
+fn static_php(text: &str, p: Platform) -> Result<Vec<Package>> {
+    let names = listing_names(text)?;
+    let listed: std::collections::HashSet<&str> = names.iter().map(String::as_str).collect();
+    let os = if p.os == Os::Macos { "macos" } else { "linux" };
+    let arch = match p.arch {
+        Arch::X86_64 => "x86_64",
+        Arch::Aarch64 => "aarch64",
+    };
+    let re = regex::Regex::new(&format!(
+        r"^php-(\d+\.\d+\.\d+)-(cli|fpm)-{os}-{arch}\.tar\.gz$"
+    ))?;
+    // (cli, fpm) presence per version; a name listed twice cannot stand in for the other part.
+    let mut have: std::collections::HashMap<String, (bool, bool)> = Default::default();
+    for n in &names {
+        if let Some(m) = re.captures(n) {
+            let e = have.entry(m[1].to_string()).or_default();
+            if &m[2] == "cli" {
+                e.0 = true;
+            } else {
+                e.1 = true;
+            }
+        }
+    }
+    let sum = |file: &str| -> Checksum {
+        let sha = format!("{file}.sha256");
+        if listed.contains(sha.as_str()) {
+            Checksum::Remote {
+                url: format!("{STATIC_PHP_BULK}/{sha}"),
+                name: file.to_string(),
+            }
+        } else {
+            Checksum::Tofu
+        }
+    };
+    let mut out: Vec<Package> = have
+        .into_iter()
+        .filter(|(v, (cli, fpm))| *cli && *fpm && parse_version(v) >= parse_version("8.1"))
+        .map(|(v, _)| {
+            let parts = ["cli", "fpm"]
+                .iter()
+                .map(|sapi| {
+                    let file = format!("php-{v}-{sapi}-{os}-{arch}.tar.gz");
+                    part(format!("{STATIC_PHP_BULK}/{file}"), sum(&file), 0)
+                })
+                .collect();
+            pkg(Kind::Php, &v, p, "static-php.dev", parts)
+        })
+        .collect();
+    out.sort_by_key(|x| std::cmp::Reverse(parse_version(&x.version)));
+    let mut per_branch: std::collections::HashMap<String, usize> = Default::default();
+    out.retain(|x| {
+        let n = per_branch
+            .entry(crate::manifest::version_branch(&x.version))
+            .or_default();
+        *n += 1;
+        *n <= 4
+    });
+    Ok(out)
 }
 
 // ---------------------------------------------------------------- GitHub hosted
@@ -398,13 +423,21 @@ async fn mysql(c: &reqwest::Client, p: Platform) -> Result<Vec<Package>> {
             (Os::Macos, Arch::X86_64) => format!("mysql-{v}-macos15-x86_64.tar.gz"),
         }
     };
+    let mut probes: Vec<(u64, u64, u64)> = SEEDS
+        .iter()
+        .filter_map(|(_, seed)| match parse_version(seed).0.as_slice() {
+            [a, b, c, ..] => Some((*a, *b, *c)),
+            _ => None,
+        })
+        .collect();
+    // Next minor and next major after the newest seed: listed only when found on the same CDN.
+    if let Some(&(a, b, _)) = probes.iter().max() {
+        probes.push((a, b + 1, 0));
+        probes.push((a + 1, 0, 0));
+    }
     let mut out = Vec::new();
-    for (branch, seed) in SEEDS {
-        let key = parse_version(seed);
-        let (major, minor, patch) = match key.0.as_slice() {
-            [a, b, c, ..] => (*a, *b, *c),
-            _ => continue,
-        };
+    for (major, minor, patch) in probes {
+        let branch = format!("{major}.{minor}");
         let mut best: Option<Package> = None;
         for next in patch..=(patch + 6) {
             let v = format!("{major}.{minor}.{next}");
@@ -741,4 +774,83 @@ async fn mongodb(c: &reqwest::Client, p: Platform) -> Result<Vec<Package>> {
             ))
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LINUX: Platform = Platform {
+        os: Os::Linux,
+        arch: Arch::X86_64,
+    };
+
+    fn listing(names: &[String]) -> String {
+        let v: Vec<_> = names
+            .iter()
+            .map(|n| serde_json::json!({ "name": n, "size": 1 }))
+            .collect();
+        serde_json::to_string(&v).unwrap()
+    }
+
+    fn both(vs: &[&str]) -> Vec<String> {
+        vs.iter()
+            .flat_map(|v| {
+                [
+                    format!("php-{v}-cli-linux-x86_64.tar.gz"),
+                    format!("php-{v}-fpm-linux-x86_64.tar.gz"),
+                ]
+            })
+            .collect()
+    }
+
+    fn versions_of(pk: &[Package]) -> Vec<&str> {
+        pk.iter().map(|p| p.version.as_str()).collect()
+    }
+
+    #[test]
+    fn static_php_numeric_order_and_pairs() {
+        let mut names = both(&["8.5.8", "8.5.13", "8.4.20", "8.0.30"]);
+        for n in [
+            "php-8.5.14-cli-linux-x86_64.tar.gz",
+            "php-8.5.14-cli-linux-x86_64.tar.gz",
+            "php-8.5.15-fpm-linux-x86_64.tar.gz",
+            "php-8.5.16-cli-linux-aarch64.tar.gz",
+            "php-8.5.16-fpm-linux-x86_64.tar.gz",
+        ] {
+            names.push(n.into());
+        }
+        let out = static_php(&listing(&names), LINUX).unwrap();
+        assert_eq!(versions_of(&out), ["8.5.13", "8.5.8", "8.4.20"]);
+        assert_eq!(
+            out[0].parts[1].url,
+            format!("{STATIC_PHP_BULK}/php-8.5.13-fpm-linux-x86_64.tar.gz")
+        );
+    }
+
+    #[test]
+    fn static_php_keeps_four_per_branch() {
+        let names = both(&["8.5.9", "8.5.10", "8.5.11", "8.5.12", "8.5.13", "8.4.1"]);
+        let out = static_php(&listing(&names), LINUX).unwrap();
+        assert_eq!(
+            versions_of(&out),
+            ["8.5.13", "8.5.12", "8.5.11", "8.5.10", "8.4.1"]
+        );
+    }
+
+    #[test]
+    fn static_php_uses_listed_sha256() {
+        let mut names = both(&["8.5.13"]);
+        names.push("php-8.5.13-cli-linux-x86_64.tar.gz.sha256".into());
+        let wrapped = format!("{{\"files\":{}}}", listing(&names));
+        let out = static_php(&wrapped, LINUX).unwrap();
+        assert_eq!(
+            out[0].parts[0].checksum,
+            Checksum::Remote {
+                url: format!("{STATIC_PHP_BULK}/php-8.5.13-cli-linux-x86_64.tar.gz.sha256"),
+                name: "php-8.5.13-cli-linux-x86_64.tar.gz".into(),
+            }
+        );
+        assert_eq!(out[0].parts[1].checksum, Checksum::Tofu);
+    }
 }
