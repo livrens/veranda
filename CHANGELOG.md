@@ -10,6 +10,19 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 
 ## [Unreleased]
 
+## [1.0.18] - 2026-11-20
+
+### Changed
+- Versions: when the version list from the upstream source cannot be loaded, the service page now
+  says so and that Veranda's built-in list is shown instead, with a hint to press Refresh.
+- PHP: static-php.dev version discovery checks the cli and fpm builds separately, accepts the
+  object-shaped list, and uses the `.sha256` checksum when one is published; the next MySQL
+  branch on the official CDN is detected too.
+
+### Fixed
+- The update check when the window becomes visible no longer fails while the lock screen is
+  still waiting at launch.
+
 ## [1.0.17] - 2026-11-18
 
 ### Added

@@ -633,7 +633,9 @@ function versionsFor(kind) {
   const all = [...new Set([...ups.map((p) => p.version), ...built.map((p) => p.version), ...inst, ...ext.map((x) => x.version)])].sort(cmpVer).reverse();
   const source = ups[0]?.source || built[0]?.source || "";
   const newest = [...new Set([...ups.map((p) => p.version), ...built.map((p) => p.version)])].sort(cmpVer).reverse()[0] || all[0] || "";
-  return { all, inst, ext, source, newest };
+  // versions_all skips a kind whose source failed, so only the built-in list is left for it.
+  const fallback = !!upstream && !upstreamLoading && !ups.length && built.length > 0;
+  return { all, inst, ext, source, newest, fallback };
 }
 function renderService() {
   const box = $("#service-page");
@@ -642,7 +644,7 @@ function renderService() {
   const st = m.svc && isActive(kind) ? svcStatus(m.svc) : null;
   const act = st ? busyOf(m.svc) : null;
   const on = kindOn(kind);
-  const { all, inst, ext, source, newest } = versionsFor(kind);
+  const { all, inst, ext, source, newest, fallback } = versionsFor(kind);
   const headCls = act ? "busy" : st?.running ? "on" : "";
 
   // header actions: enable switch + start/stop for services, Open for web tools
@@ -729,7 +731,7 @@ function renderService() {
     const skeleton = upstreamLoading
       ? [0, 1, 2].map(() => `<div class="vrow skeleton"><span class="sk w1"></span><span class="sk w2"></span><span class="sk w3"></span><span class="act"><span class="sk w4"></span></span></div>`).join("")
       : "";
-    body = `${kind === "node" && state.nvm_available ? `<div class="notice">${ICONS.info}<span>${t("ver.nvmInstall")}</span></div>` : ""}${ext.length ? `<div class="notice">${ICONS.info}<span>${t("ver.external", { n: ext.length, source: [...new Set(ext.map((e) => e.source))].join(", ") })}</span></div>` : ""}
+    body = `${fallback ? `<div class="notice warn">${ICONS.info}<span>${t("ver.fallback", { source: source || "—" })}</span></div>` : ""}${kind === "node" && state.nvm_available ? `<div class="notice">${ICONS.info}<span>${t("ver.nvmInstall")}</span></div>` : ""}${ext.length ? `<div class="notice">${ICONS.info}<span>${t("ver.external", { n: ext.length, source: [...new Set(ext.map((e) => e.source))].join(", ") })}</span></div>` : ""}
       <div class="vhead ${upstreamLoading ? "loading" : ""}"><span>${upstreamLoading ? `${ICONS.spinner}${t("ver.fetching", { source: source || "—" })}` : t("ver.hint", { source: source || "—" })}</span>
         <button class="btn small ${upstreamLoading ? "busy" : ""}" id="btn-check-upstream" ${upstreamLoading ? "disabled" : ""}>${ICONS.refresh}<span>${t("btn.refresh")}</span></button></div>
       <div class="vtable ${upstreamLoading ? "loading" : ""}">${upstreamLoading ? `<div class="loadbar"><div class="fill"></div></div>` : ""}<div class="vrow head"><span>${t("ver.version")}</span><span class="src">${t("ver.source")}</span><span>${t("ver.status")}</span><span class="act">${t("ver.action")}</span></div>
@@ -1452,8 +1454,9 @@ listen("update-progress", (ev) => {
 listen("update-available", (ev) => { lastUpdateCheck = Date.now(); showUpdate(ev.payload); });
 // Coming back to the window (from the tray, another desktop, sleep) after a while: check again,
 // so a release published while Veranda sat in the background shows up without a click.
+// state is still null while the lock screen waits at launch or before the first get_state succeeds.
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible" || !state.config?.update?.check_on_start) return;
+  if (document.visibilityState !== "visible" || !state?.config?.update?.check_on_start) return;
   if (Date.now() - lastUpdateCheck > 30 * 60 * 1000) checkForUpdate(false);
 });
 listen("update-auto", () => { const b = $("#btn-update-install"); b.disabled = true; $("#update-notes").textContent = t("update.auto"); $("#update-progress").classList.remove("hidden"); });
