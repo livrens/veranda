@@ -2,7 +2,8 @@ name: Release
 
 # Trigger: push a tag like v0.1.0 (must match "version" in apps/desktop/src-tauri/tauri.conf.json).
 # Produces: .deb/.rpm/.AppImage (Linux), .exe/.msi (Windows), .dmg/.app (macOS universal),
-# signed updater artifacts + latest.json, and the CLI binaries, attached to a DRAFT release.
+# signed updater artifacts + latest.json, and the CLI archives (.zip on Windows, .tar.gz elsewhere,
+# each with a .sha256), attached to a DRAFT release.
 on:
   push:
     tags: ["v*"]
@@ -36,7 +37,7 @@ jobs:
             if (found) return String(found.id);
             const { data } = await github.rest.repos.createRelease({
               owner, repo, tag_name: tag, name: `Veranda ${tag}`,
-              body: 'See CHANGELOG.md for details.\n\nInstallers: Windows `*_x64-setup.exe` (or `.msi`), macOS `.dmg`, Linux `.deb`, `.rpm` or `.AppImage`. The `veranda-cli-*` files are the optional command-line tool, not installers.', draft: true, prerelease: false,
+              body: 'See CHANGELOG.md for details.\n\nInstallers: Windows `*_x64-setup.exe` (or `.msi`), macOS `.dmg`, Linux `.deb`, `.rpm` or `.AppImage`. The `veranda-cli-*` archives (`.zip` for Windows, `.tar.gz` for Linux and macOS) hold the optional command-line tool; they are not installers.', draft: true, prerelease: false,
             });
             return String(data.id);
 
@@ -135,23 +136,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux-x86_64, os: ubuntu-22.04, bin: veranda, ext: "" }
+          - { name: linux-x86_64, os: ubuntu-22.04, bin: veranda, ext: ".tar.gz" }
           - { name: windows-x86_64, os: windows-latest, bin: veranda.exe, ext: ".zip" }
-          - { name: macos-arm64, os: macos-latest, bin: veranda, ext: "" }
+          - { name: macos-arm64, os: macos-latest, bin: veranda, ext: ".tar.gz" }
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release -p veranda-cli
-      # Windows ships a .zip holding veranda.exe: a bare .exe next to the installer gets
-      # double-clicked by mistake. 7z is preinstalled on the runner; Git Bash has no zip.
+      # Every system ships an archive holding the binary. Windows: a .zip, because a bare .exe next
+      # to the installer gets double-clicked by mistake (7z is preinstalled on the runner; Git Bash
+      # has no zip). Linux and macOS: a .tar.gz, which keeps the executable bit.
       - shell: bash
         run: |
           mkdir -p dist
           if [ "${{ runner.os }}" = "Windows" ]; then
             (cd target/release && 7z a -tzip -mx=9 "../../dist/veranda-cli-${{ matrix.name }}${{ matrix.ext }}" "${{ matrix.bin }}")
           else
-            cp target/release/${{ matrix.bin }} "dist/veranda-cli-${{ matrix.name }}${{ matrix.ext }}"
+            tar -czf "dist/veranda-cli-${{ matrix.name }}${{ matrix.ext }}" -C target/release "${{ matrix.bin }}"
           fi
           cd dist && sha256sum * > "veranda-cli-${{ matrix.name }}.sha256"
       - uses: softprops/action-gh-release@v2

@@ -1544,6 +1544,8 @@ async function autotest(name) {
 (async () => {
   applyI18n();
   await refreshLockInfo();
+  // Started before the lock wait: a locked page without heartbeats is reloaded by the watchdog.
+  setInterval(() => invoke("ui_heartbeat").catch(() => {}), 5000);
   if (lockInfo.locked) { showLock(true); uiReady(); await waitUnlock(); }
   await refresh();
   if (state?.ui_theme === "light" || state?.ui_theme === "dark") setTheme(state.ui_theme);
@@ -1557,5 +1559,4 @@ async function autotest(name) {
   if (state?.ui_perf) setTimeout(perfBenchmark, 1200);
   if (state?.ui_autotest) setTimeout(() => autotest(state.ui_autotest), 1500);
   setInterval(() => { if (document.visibilityState !== "visible" || installing || removing) return; refresh(); if (currentTab === "logs") loadLog(); }, 15000);
-  setInterval(() => invoke("ui_heartbeat").catch(() => {}), 5000);
 })();

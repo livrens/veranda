@@ -122,8 +122,8 @@ Setiap rilis juga menyertakan alat baris perintah `veranda` dengan fitur yang sa
 bukan pemasang dan tidak untuk diklik dua kali: jalankan dari terminal.
 
 ```sh
-# Linux / macOS
-chmod +x veranda-cli-linux-x86_64 && sudo mv veranda-cli-linux-x86_64 /usr/local/bin/veranda
+# Linux (di macOS pakai veranda-cli-macos-arm64.tar.gz)
+tar -xzf veranda-cli-linux-x86_64.tar.gz && sudo mv veranda /usr/local/bin/veranda
 # Windows (PowerShell): ekstrak veranda-cli-windows-x86_64.zip lalu pindahkan veranda.exe ke folder yang ada di PATH
 
 veranda init && veranda install php && veranda install mariadb && veranda start

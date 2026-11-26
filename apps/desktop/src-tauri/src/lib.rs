@@ -532,7 +532,13 @@ fn ui_ready(handle: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
     if core.config.general.start_minimized {
         return Ok(());
     }
-    show_main(&handle);
+    // A page reload (watchdog) must not pull focus to a window that is already on screen.
+    let on_screen = handle
+        .get_webview_window("main")
+        .is_some_and(|w| w.is_visible().unwrap_or(false));
+    if !on_screen {
+        show_main(&handle);
+    }
     // Dev/screenshot hint: VERANDA_UI_SIZE=WxH resizes the window after the first render.
     if let Ok(size) = std::env::var("VERANDA_UI_SIZE")
         && let Some((w, h)) = size.split_once('x')
@@ -2074,6 +2080,71 @@ fn show_main(app: &AppHandle) {
     }
 }
 
+/// Text of the startup error dialog, in both UI languages: the configured one is unknown while
+/// the config cannot be read. The raw error is not shown: it can quote config lines and full paths.
+fn startup_error_text(e: &anyhow::Error) -> String {
+    let (root, config) = match veranda_core::Layout::discover() {
+        Ok(l) => (l.root().to_path_buf(), l.config_file()),
+        Err(_) => Default::default(),
+    };
+    // Home folder as `~`, any other root by name only: no user name in the dialog.
+    let mut path = match std::env::home_dir() {
+        Some(home) if !home.as_os_str().is_empty() && root.starts_with(&home) => {
+            std::path::Path::new("~").join(root.strip_prefix(&home).unwrap_or(&root))
+        }
+        _ => root.file_name().map(Into::into).unwrap_or_default(),
+    };
+    let io = e.chain().find_map(|c| c.downcast_ref::<std::io::Error>());
+    let (en, id, cause) = match io {
+        Some(io) => (
+            "Veranda cannot start: its folder cannot be read or written. Check that the folder exists and that you are allowed to write to it.",
+            "Veranda tidak dapat dijalankan: foldernya tidak dapat dibaca atau ditulisi. Pastikan folder itu ada dan Anda boleh menulis ke dalamnya.",
+            match io.raw_os_error() {
+                Some(code) => std::io::Error::from_raw_os_error(code).to_string(),
+                None => io.kind().to_string(),
+            },
+        ),
+        None => {
+            path = path.join(
+                config
+                    .strip_prefix(&root)
+                    .unwrap_or(std::path::Path::new("")),
+            );
+            (
+                "Veranda cannot start: its configuration file is not valid. Fix the file, or rename it to start with the default settings.",
+                "Veranda tidak dapat dijalankan: file konfigurasinya tidak valid. Perbaiki file itu, atau ganti namanya agar Veranda memakai pengaturan bawaan.",
+                e.root_cause()
+                    .to_string()
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+        }
+    };
+    format!("{en}\n\n{id}\n\n{}\n{cause}", path.display())
+}
+
+/// Startup failed before the UI exists: a bare app that only shows a native error dialog,
+/// then exits with code 1.
+fn startup_error_dialog(mut context: tauri::Context<tauri::Wry>, message: String) -> ! {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+    context.config_mut().app.windows.clear();
+    let _ = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .setup(move |app| {
+            let handle = app.handle().clone();
+            app.dialog()
+                .message(message)
+                .title("Veranda")
+                .kind(MessageDialogKind::Error)
+                .show(move |_| handle.exit(1));
+            Ok(())
+        })
+        .run(context);
+    std::process::exit(1)
+}
+
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -2081,7 +2152,14 @@ pub fn run() {
                 .add_directive("info".parse().unwrap()),
         )
         .init();
-    let core = Veranda::open().expect("cannot open the Veranda root");
+    let context = tauri::generate_context!();
+    let core = match Veranda::open() {
+        Ok(core) => core,
+        Err(e) => {
+            tracing::error!("cannot open the Veranda root: {e:#}");
+            startup_error_dialog(context, startup_error_text(&e))
+        }
+    };
     let _ = veranda_core::tls::ensure_ca(&core.layout);
     let auto_start = core.config.general.auto_start;
     let start_minimized = core.config.general.start_minimized;
@@ -2440,6 +2518,6 @@ pub fn run() {
             remote::remote_import_apply,
             remote::remote_open_link
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running Veranda");
 }

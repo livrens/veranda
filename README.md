@@ -126,8 +126,8 @@ Every release also includes a `veranda` command-line tool with the same features
 is not an installer and is not meant to be double-clicked: run it from a terminal.
 
 ```sh
-# Linux / macOS
-chmod +x veranda-cli-linux-x86_64 && sudo mv veranda-cli-linux-x86_64 /usr/local/bin/veranda
+# Linux (on macOS use veranda-cli-macos-arm64.tar.gz)
+tar -xzf veranda-cli-linux-x86_64.tar.gz && sudo mv veranda /usr/local/bin/veranda
 # Windows (PowerShell): unzip veranda-cli-windows-x86_64.zip and move veranda.exe to a folder on your PATH
 
 veranda init && veranda install php && veranda install mariadb && veranda start
