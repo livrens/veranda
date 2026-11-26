@@ -247,7 +247,36 @@ enum ConfigCmd {
 #[derive(Args)]
 struct Empty;
 
+/// Double-clicked from Explorer: no arguments and a console that belongs to this process alone.
+/// Say what this file is and keep the window open; the usage error and exit code follow as usual.
+#[cfg(windows)]
+fn explain_double_click() {
+    use std::io::IsTerminal;
+    use windows_sys::Win32::System::Console::GetConsoleProcessList;
+
+    if std::env::args_os().len() != 1 || !std::io::stdin().is_terminal() {
+        return;
+    }
+    let mut pids = [0u32; 2];
+    // SAFETY: the pointer and length describe a live, writable buffer.
+    let attached = unsafe { GetConsoleProcessList(pids.as_mut_ptr(), pids.len() as u32) };
+    if attached != 1 {
+        return;
+    }
+    eprintln!(
+        "This is the Veranda command-line tool, not the installer.\n\
+         To install the Veranda app, download Veranda_<version>_x64-setup.exe from the releases page:\n  \
+         https://github.com/{}/releases/latest\n\
+         To use this tool, open a terminal and run: veranda --help\n\n\
+         Press Enter to close this window.",
+        veranda_core::config::DEFAULT_UPDATE_REPO
+    );
+    let _ = std::io::stdin().read_line(&mut String::new());
+}
+
 fn main() {
+    #[cfg(windows)]
+    explain_double_click();
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()

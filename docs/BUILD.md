@@ -75,10 +75,13 @@ If the private key is ever lost, existing installs can no longer receive updates
 2. Commit, then `git tag v0.1.0 && git push origin v0.1.0`.
 3. `.github/workflows/release.yml` builds on GitHub's machines (nothing runs on your laptop):
    Linux `.deb` / `.rpm` / `.AppImage`, Windows `.exe` (NSIS) / `.msi`, macOS universal `.dmg`,
-   the CLI binaries, the signed updater files and `latest.json`. Everything lands on a **draft**
-   release. Open it on GitHub, check the assets, and press *Publish release*.
-4. Install once by hand: Linux `sudo apt install ./veranda_0.1.0_amd64.deb` (or run the AppImage),
-   Windows run the `.exe`, macOS open the `.dmg`. Veranda then appears in the app menu.
+   the CLI binaries (`veranda-cli-<platform>`; on Windows a `.zip` holding `veranda.exe`), the
+   signed updater files and `latest.json`. Everything lands on a **draft** release. Open it on
+   GitHub, check the assets, and press *Publish release*.
+4. Install once by hand: Linux `sudo apt install ./Veranda_<version>_amd64.deb` (or run the
+   AppImage), Windows run `Veranda_<version>_x64-setup.exe`, macOS open the `.dmg`. Veranda then
+   appears in the app menu. The `veranda-cli-…` assets are the command-line tool, not installers:
+   they are run from a terminal, not double-clicked.
 5. From the next release on, Veranda shows an
    update banner (or installs automatically if *Install updates automatically* is on). On Linux the
    AppImage self-updates; `.deb`/`.rpm` installs show the release page instead.

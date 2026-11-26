@@ -66,26 +66,26 @@ berjalan tanpa Anda nyalakan.
 ## Pemasangan
 
 Unduh berkas untuk sistem Anda dari **[rilis terbaru](https://github.com/livrens/veranda/releases/latest)**.
-(Ganti `1.0.9` di bawah dengan versi yang Anda unduh.)
+(`<versi>` di bawah adalah nomor versi yang Anda unduh; tanda `*` pada perintah mencocokkannya.)
 
 ### Linux
 
 **Debian, Ubuntu, Kubuntu, Linux Mint, Pop!_OS** (`.deb`):
 ```sh
-sudo apt install ./Veranda_1.0.9_amd64.deb
+sudo apt install ./Veranda_*_amd64.deb
 ```
 Veranda muncul di menu aplikasi. Pembaruan dipasang dari dalam aplikasi: paket bertanda tangan
 diunduh lalu dipasang lewat dialog kata sandi sistem.
 
 **Fedora, openSUSE, RHEL** (`.rpm`):
 ```sh
-sudo dnf install ./Veranda-1.0.9-1.x86_64.rpm     # atau: sudo zypper install ./Veranda-*.rpm
+sudo dnf install ./Veranda-*.x86_64.rpm     # atau: sudo zypper install ./Veranda-*.rpm
 ```
 
 **Distribusi apa pun** (`.AppImage`, tanpa pemasangan):
 ```sh
-chmod +x Veranda_1.0.9_amd64.AppImage
-./Veranda_1.0.9_amd64.AppImage
+chmod +x Veranda_*_amd64.AppImage
+./Veranda_*_amd64.AppImage
 ```
 AppImage bisa memperbarui dirinya dari dalam aplikasi. Pindahkan ke folder seperti
 `~/Applications` agar rapi.
@@ -96,30 +96,35 @@ Settings.
 
 ### Windows 10 / 11
 
-1. Unduh `Veranda_1.0.9_x64-setup.exe` lalu jalankan. Jika SmartScreen berkata "Windows protected
+1. Unduh `Veranda_<versi>_x64-setup.exe` lalu jalankan. Jika SmartScreen berkata "Windows protected
    your PC", klik **More info → Run anyway** (pemasangnya masih baru dan belum banyak diunduh;
    hanya itu arti peringatannya).
 2. Ikuti pemasangnya. Veranda ditambahkan ke menu Start. Runtime Microsoft WebView2 dipasang
    otomatis jika komputer Anda belum punya.
-3. Perlu MSI untuk pemasangan di perusahaan? `Veranda_1.0.9_x64_en-US.msi` ada di rilis yang sama.
+3. Perlu MSI untuk pemasangan di perusahaan? `Veranda_<versi>_x64_en-US.msi` ada di rilis yang sama.
 
 Pembaruan dipasang langsung dari dalam aplikasi.
 
+> **Bukan pemasang:** berkas `veranda-cli-…` di sebuah rilis adalah alat baris perintah opsional
+> (lihat di bawah). Mengekliknya dua kali tidak memasang apa pun; pemasangnya adalah berkas yang
+> berakhiran `-setup.exe`.
+
 ### macOS (Apple Silicon dan Intel)
 
-1. Unduh `Veranda_1.0.9_universal.dmg`, buka, lalu seret **Veranda** ke **Applications**.
+1. Unduh `Veranda_<versi>_universal.dmg`, buka, lalu seret **Veranda** ke **Applications**.
 2. Peluncuran pertama: klik kanan (atau Control-klik) Veranda → **Open** → **Open**. macOS bertanya
    sekali karena aplikasi belum ditandatangani sertifikat Apple Developer.
 3. Pembaruan dipasang langsung dari dalam aplikasi.
 
 ### Baris perintah (opsional)
 
-Setiap rilis juga menyertakan alat baris perintah `veranda` dengan fitur yang sama:
+Setiap rilis juga menyertakan alat baris perintah `veranda` dengan fitur yang sama. Alat ini
+bukan pemasang dan tidak untuk diklik dua kali: jalankan dari terminal.
 
 ```sh
 # Linux / macOS
 chmod +x veranda-cli-linux-x86_64 && sudo mv veranda-cli-linux-x86_64 /usr/local/bin/veranda
-# Windows (PowerShell): pindahkan veranda-cli-windows-x86_64.exe ke folder yang ada di PATH, ganti nama menjadi veranda.exe
+# Windows (PowerShell): ekstrak veranda-cli-windows-x86_64.zip lalu pindahkan veranda.exe ke folder yang ada di PATH
 
 veranda init && veranda install php && veranda install mariadb && veranda start
 ```

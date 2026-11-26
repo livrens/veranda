@@ -136,17 +136,23 @@ jobs:
       matrix:
         include:
           - { name: linux-x86_64, os: ubuntu-22.04, bin: veranda, ext: "" }
-          - { name: windows-x86_64, os: windows-latest, bin: veranda.exe, ext: ".exe" }
+          - { name: windows-x86_64, os: windows-latest, bin: veranda.exe, ext: ".zip" }
           - { name: macos-arm64, os: macos-latest, bin: veranda, ext: "" }
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release -p veranda-cli
+      # Windows ships a .zip holding veranda.exe: a bare .exe next to the installer gets
+      # double-clicked by mistake. 7z is preinstalled on the runner; Git Bash has no zip.
       - shell: bash
         run: |
           mkdir -p dist
-          cp target/release/${{ matrix.bin }} "dist/veranda-cli-${{ matrix.name }}${{ matrix.ext }}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            (cd target/release && 7z a -tzip -mx=9 "../../dist/veranda-cli-${{ matrix.name }}${{ matrix.ext }}" "${{ matrix.bin }}")
+          else
+            cp target/release/${{ matrix.bin }} "dist/veranda-cli-${{ matrix.name }}${{ matrix.ext }}"
+          fi
           cd dist && sha256sum * > "veranda-cli-${{ matrix.name }}.sha256"
       - uses: softprops/action-gh-release@v2
         with:

@@ -6285,6 +6285,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "veranda-core",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

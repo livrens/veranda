@@ -71,26 +71,26 @@ only the parts you need; nothing is forced on you and nothing runs that you did 
 ## Install
 
 Download the file for your system from the **[latest release](https://github.com/livrens/veranda/releases/latest)**.
-(Replace `1.0.9` below with the version you downloaded.)
+(`<version>` below is the version number you downloaded; the `*` in the commands matches it.)
 
 ### Linux
 
 **Debian, Ubuntu, Kubuntu, Linux Mint, Pop!_OS** (`.deb`):
 ```sh
-sudo apt install ./Veranda_1.0.9_amd64.deb
+sudo apt install ./Veranda_*_amd64.deb
 ```
 Veranda appears in your application menu. Updates install in place from the app: it downloads the
 signed package and installs it through the system's password prompt.
 
 **Fedora, openSUSE, RHEL** (`.rpm`):
 ```sh
-sudo dnf install ./Veranda-1.0.9-1.x86_64.rpm     # or: sudo zypper install ./Veranda-*.rpm
+sudo dnf install ./Veranda-*.x86_64.rpm     # or: sudo zypper install ./Veranda-*.rpm
 ```
 
 **Any distribution** (`.AppImage`, no installation):
 ```sh
-chmod +x Veranda_1.0.9_amd64.AppImage
-./Veranda_1.0.9_amd64.AppImage
+chmod +x Veranda_*_amd64.AppImage
+./Veranda_*_amd64.AppImage
 ```
 The AppImage can update itself from inside the app. Move it to a folder like `~/Applications`
 if you want to keep it around.
@@ -100,30 +100,35 @@ hint, or run `veranda doctor --fix-ports` from the CLI. You can also use 8080/84
 
 ### Windows 10 / 11
 
-1. Download `Veranda_1.0.9_x64-setup.exe` and run it. If SmartScreen says "Windows protected your
+1. Download `Veranda_<version>_x64-setup.exe` and run it. If SmartScreen says "Windows protected your
    PC", click **More info → Run anyway** (the installer is new and not yet widely downloaded;
    that is all the warning means).
 2. Follow the installer. Veranda is added to the Start menu. The Microsoft WebView2 runtime is
    installed automatically if your PC does not have it.
-3. Prefer MSI for company deployment? `Veranda_1.0.9_x64_en-US.msi` is in the same release.
+3. Prefer MSI for company deployment? `Veranda_<version>_x64_en-US.msi` is in the same release.
 
 Updates install in place from the app.
 
+> **Not the installer:** the `veranda-cli-…` files in a release are the optional command-line
+> tool (see below). Double-clicking one installs nothing; the installer is the file ending in
+> `-setup.exe`.
+
 ### macOS (Apple Silicon and Intel)
 
-1. Download `Veranda_1.0.9_universal.dmg`, open it and drag **Veranda** into **Applications**.
+1. Download `Veranda_<version>_universal.dmg`, open it and drag **Veranda** into **Applications**.
 2. First launch: right-click (or Control-click) Veranda → **Open** → **Open**. macOS asks this once
    because the app is not signed with an Apple Developer certificate.
 3. Updates install in place from the app.
 
 ### Command line (optional)
 
-Every release also includes a `veranda` command-line tool with the same features as the app:
+Every release also includes a `veranda` command-line tool with the same features as the app. It
+is not an installer and is not meant to be double-clicked: run it from a terminal.
 
 ```sh
 # Linux / macOS
 chmod +x veranda-cli-linux-x86_64 && sudo mv veranda-cli-linux-x86_64 /usr/local/bin/veranda
-# Windows (PowerShell): move veranda-cli-windows-x86_64.exe to a folder on your PATH and rename it veranda.exe
+# Windows (PowerShell): unzip veranda-cli-windows-x86_64.zip and move veranda.exe to a folder on your PATH
 
 veranda init && veranda install php && veranda install mariadb && veranda start
 ```

@@ -27,6 +27,16 @@ jobs:
       - run: cargo clippy -p veranda-core -p veranda-cli --all-targets -- -D warnings
       - run: cargo test -p veranda-core
       - run: cargo build -p veranda-cli --release
+      # Smoke test: the CLI must answer without waiting for input; a hang fails on the timeout.
+      - name: CLI smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        timeout-minutes: 2
+        run: |
+          ./target/release/veranda.exe --help < /dev/null
+          ./target/release/veranda.exe --version < /dev/null
+          code=0; ./target/release/veranda.exe < /dev/null || code=$?
+          [ "$code" -eq 2 ]
 
   audit:
     name: cargo audit
