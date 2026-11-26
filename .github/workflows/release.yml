@@ -36,7 +36,7 @@ jobs:
             if (found) return String(found.id);
             const { data } = await github.rest.repos.createRelease({
               owner, repo, tag_name: tag, name: `Veranda ${tag}`,
-              body: 'See CHANGELOG.md for details.', draft: true, prerelease: false,
+              body: 'See CHANGELOG.md for details.\n\nInstallers: Windows `*_x64-setup.exe` (or `.msi`), macOS `.dmg`, Linux `.deb`, `.rpm` or `.AppImage`. The `veranda-cli-*` files are the optional command-line tool, not installers.', draft: true, prerelease: false,
             });
             return String(data.id);
 
