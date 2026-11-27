@@ -10,6 +10,35 @@ installers for Linux, Windows and macOS and attaches them to the GitHub release.
 
 ## [Unreleased]
 
+## [1.0.19] - 2026-11-27
+
+### Added
+- Startup: when the Veranda folder cannot be read or written, or the configuration file is not
+  valid, Veranda shows an error dialog in English and Indonesian and then exits. The dialog gives
+  a shortened path (the home folder as `~`) and a one-line cause, not the raw error.
+- CLI on Windows: when `veranda.exe` is double-clicked, it explains that it is the command-line
+  tool and not the installer, says where to get the installer, and waits for Enter before the
+  window closes.
+
+### Changed
+- Release assets: the command-line tool is shipped as an archive, a `.zip` on Windows and a
+  `.tar.gz` on Linux and macOS (which keeps the executable bit), each with a `.sha256` file.
+- The draft release text lists the installer file for each system and says that the
+  `veranda-cli-*` archives are not installers.
+- Docs: the install steps in the READMEs and `docs/BUILD.md` use file names that do not depend on
+  the version and describe how to unpack the CLI.
+- CI: a Windows smoke test checks that the CLI answers `--help`, `--version` and a call without
+  arguments without waiting for input.
+
+### Fixed
+- Lock screen: the window no longer asks for attention in the taskbar while Veranda is locked.
+  Heartbeats start before the unlock wait, so the watchdog does not reload the locked page, and a
+  page reload no longer brings forward a window that is already on screen.
+
+### Security
+- `cookie` updated to 0.18.3 (RUSTSEC-2026-0594).
+- `url` updated to 2.5.9 and `form_urlencoded` to 1.2.3 (RUSTSEC-2026-0592).
+
 ## [1.0.18] - 2026-11-20
 
 ### Changed
