@@ -13,7 +13,7 @@ version = "1.0.19"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"
-repository = ""
+repository = "https://github.com/livrens/veranda"
 authors = ["Veranda contributors"]
 
 [workspace.dependencies]
